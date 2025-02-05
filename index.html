@@ -157,12 +157,6 @@
                 background-color: #0056b3; /* Darker blue on hover */
             }
 
-            #libraryDropdown {
-                width: 75%;
-                font-size: 20px;
-                padding: 10px;
-            }
-
             .container {
                 width: 100%;
                 max-width: 1200px;
@@ -431,30 +425,21 @@
     
         <div id="ModifyGames" class="tabcontent">           
             <div class="container">
-                <h1>Choose A Library</h1>
-                <select id="libraryDropdown">
-                    <option value="" disabled selected>Choose A Library</option>
-                    <option value="newLibrary">New Library</option>
-                </select>
-                <br></br>
-
-                <hr class="rounded">
-
-                <h1>Import BGG Collection</h1>
+                <h1>Import Your BGG Collection</h1>
                 <input type="text" id="bggUsername" placeholder="Enter BGG Username">
                 <button id="getCollectionButton" class="button">Get Collection</button>
                 <div id="statusMessage"></div>
 
                 <hr class="rounded">
 
-                <h1>Add Individual Games</h1>
+                <h1>Add Your Individual Games</h1>
                 <input type="text" id="bggSearchQuery" placeholder="Search For A Game">
                 <button id="searchGamesButton" class="button">Search</button>
                 <div id="searchResults"></div>
 
                 <hr class="rounded">
 
-                <h1>Remove Individual Games</h1>
+                <h1>Remove Your Individual Games</h1>
                 <button id="searchLibraryButton" class="button">Display Library</button>
                 <div id="libraryResults"></div>
             </div>

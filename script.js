@@ -1,5 +1,3 @@
-var globalXmlData = null;
-var ownerGamesVisibility = {};
 var currentActiveOverlays = {
     websiteOverlay: null,
     addActionOverlay: null
@@ -17,7 +15,7 @@ let activeTab = "Home";
 
 // Import Firebase modules
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+import { getFirestore, collection, doc, query, where, updateDoc, arrayRemove, arrayUnion, deleteDoc, setDoc, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 
 // Get references to Firebase services
 const auth = getAuth(); // Uses the app initialized in index.html
@@ -81,15 +79,8 @@ onAuthStateChanged(auth, (user) => {
     // Call the appropriate function for the active tab
     if (activeTab === "Games") {
         displayGamesTab();
-    } else if (activeTab === "ModifyGames") {
-        populateLibraryDropdown();
     }
 });
-
-// Open modal
-function openLoginModal() {
-    loginModal.style.display = "block";
-}
 
 // Close modal
 closeLoginModal.addEventListener("click", () => {
@@ -247,7 +238,6 @@ function openTab(evt, tabName) {
     }
 
     if (tabName === 'ModifyGames') {
-        populateLibraryDropdown();
         document.getElementById('bggUsername').value = '';
         document.getElementById('searchResults').innerHTML = '';
         document.getElementById('bggSearchQuery').value = '';
@@ -266,7 +256,6 @@ function openTab(evt, tabName) {
 document.getElementById("homeTab").addEventListener("click", (event) => openTab(event, "Home"));
 document.getElementById("gamesTab").addEventListener("click", (event) => openTab(event, "Games"));
 document.getElementById("modifyGamesTab").addEventListener("click", (event) => openTab(event, "ModifyGames"));
-document.getElementById("libraryDropdown").addEventListener("change", handleLibraryChange);
 document.getElementById("getCollectionButton").addEventListener("click", getCollection);
 document.getElementById("searchGamesButton").addEventListener("click", () => searchGames(document.getElementById("searchGamesButton")));
 document.getElementById("searchLibraryButton").addEventListener("click", () => searchLibrary(document.getElementById("searchLibraryButton")));
@@ -278,11 +267,9 @@ function getCollection() {
     if (!isLoggedIn()) return;
     
     var username = document.getElementById('bggUsername').value;
-    var libraryDropdown = document.getElementById('libraryDropdown');
-    var selectedLibrary = libraryDropdown.value;
     var statusDiv = document.getElementById('statusMessage');
     
-    if (username && selectedLibrary && selectedLibrary !== 'newLibrary') {
+    if (username) {
         statusDiv.innerHTML = 'Fetching Collection...';
         fetch(`https://boardgamegeek.com/xmlapi2/collection?username=${encodeURIComponent(username)}&own=1&version=1`)
             .then(response => {
@@ -317,87 +304,179 @@ function getCollection() {
         if (!username) {
             alert ('Please Enter A Username.');
             statusDiv.innerHTML = '';
-        } else {
-            alert ('Please Choose A Library First.');
-            statusDiv.innerHTML = '';
         }
     }
 }
 
 function prepareData(data) {
-    var extractedData = [];
-    var items = data.getElementsByTagName('item');
-    var statusDiv = document.getElementById('statusMessage');
-
-    for (var i = 0; i < items.length; i++) {
-        var name = items[i].getElementsByTagName('name')[0].textContent;
-        var objectId = items[i].getAttribute('objectid');
-        var objectIdNum = Number(objectId); // Convert objectId to a number
-
-        // Check if the thumbnail element exists
-        var thumbnailElements = items[i].getElementsByTagName('thumbnail');
-        var thumbnail = '';
-        if (thumbnailElements.length > 0) {
-            thumbnail = thumbnailElements[0].textContent;
-        } else {
-            // Set a default thumbnail or handle the absence of a thumbnail
-            thumbnail = './no-image.png';
+    const statusDiv = document.getElementById('statusMessage');
+    const userUID = auth.currentUser.uid;
+  
+    // 1) Build extractedData from BGG XML
+    const extractedData = [];
+    const items = data.getElementsByTagName('item');
+  
+    for (let i = 0; i < items.length; i++) {
+      const name = items[i].getElementsByTagName('name')[0].textContent;
+      const objectId = items[i].getAttribute('objectid');
+      const objectIdNum = Number(objectId);
+  
+      let thumbnail = './no-image.png';
+      const thumbnailElements = items[i].getElementsByTagName('thumbnail');
+      if (thumbnailElements.length > 0) {
+        thumbnail = thumbnailElements[0].textContent;
+      }
+  
+      const status = [];
+      const newGame = 'Y';
+  
+      extractedData.push({
+        name,
+        objectId: objectIdNum,
+        thumbnail,
+        status,
+        newGame
+      });
+    }
+  
+    // Show the first 10 game names for confirmation
+    const firstSet = extractedData.slice(0, 10).map(g => g.name).join('\n');
+    const confirmation = confirm(
+      `Here are the first 10 games from this collection:\n\n${firstSet}\n\nDoes this look correct?`
+    );
+    if (!confirmation) {
+      statusDiv.innerHTML = '';
+      return;
+    }
+  
+    // 2) If confirmed, fetch user's Firestore games (via UID)
+    statusDiv.innerHTML = 'Updating Database...';
+  
+    fetchUserGames().then(async (existingGames) => {
+        // existingGames: array of { name, objectId, thumbnail, owners, ... }
+        
+        // If user has zero existing games, prompt once for library name
+        if (existingGames.length === 0) {
+            const libraryName = prompt(
+            "This is your first game! What would you like others to see your library called?"
+            );
+            if (libraryName) {
+                await setDoc(doc(db, "users", userUID), { libraryName }, { merge: true });
+            }
         }
 
-        var status = '[]';
-	var newGame = 'Y';
-        extractedData.push({ name, objectId: objectIdNum, thumbnail, status, newGame });
-    }
+        // 3) Remove user ownership for any existing games not in new extractedData
+        const newObjectIds = extractedData.map(g => g.objectId);
+        const gamesToRemove = existingGames.filter(g =>
+            !newObjectIds.includes(g.objectId)
+        );
 
-    // Display an alert with the first 10 names and ask for confirmation
-    var firstSet = extractedData.slice(0, 10).map(game => game.name).join('\n');
-    var confirmation = confirm(`Here are the first 10 games from this collection:\n\n${firstSet}\n\nDoes this look correct?`);
-
-    if (confirmation) {
-        fetchExistingGames().then(gamesDataFromSheet => {
-            var objectIdsInXML = extractedData.map(game => game.objectId);
-            var gamesToRemove = gamesDataFromSheet.filter(game => !objectIdsInXML.includes(game.objectId));
-
-            gamesToRemove.forEach(game => {
-                if (confirm(`Remove "${game.name}" from the sheet?`)) {
-                    // Send removal request to Google Apps Script
-                    removeFromGoogleSheet(game.objectId);
-                }
-            });
-
-            var uniqueGames = extractedData.filter(game => !gamesDataFromSheet.map(g => g.objectId).includes(game.objectId));
-            if (uniqueGames.length > 0) {
-                sendToGoogleSheet({ games: uniqueGames });
-                alert (`${uniqueGames.length} new game(s) added.`);
-                statusDiv.innerHTML = '';
-            } else {
-                alert ('No new games to add.');
-                statusDiv.innerHTML = '';
+        gamesToRemove.forEach(game => {
+            if (confirm(`Remove "${game.name}" from your ownership?`)) {
+            removeGame(game.objectId);
             }
         });
-    } else {
+
+        // 4) Add new games from extractedData that user doesn't already own
+        const existingObjectIds = existingGames.map(g => g.objectId);
+        const uniqueGames = extractedData.filter(g =>
+            !existingObjectIds.includes(g.objectId)
+        );
+
+        if (uniqueGames.length > 0) {
+            const addPromises = uniqueGames.map(g => addGame(g));
+            Promise.all(addPromises)
+            .then(() => {
+                alert(`${uniqueGames.length} new game(s) added to your ownership.`);
+                statusDiv.innerHTML = '';
+            })
+            .catch(error => {
+                console.error('Error adding games:', error);
+                alert('Failed to add some games. See console for details.');
+                statusDiv.innerHTML = '';
+            });
+        } else {
+            alert('No new games to add.');
+            statusDiv.innerHTML = '';
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching user-owned games:', error);
+        alert('An error occurred while fetching your games. Please try again.');
         statusDiv.innerHTML = '';
+    });
+}
+  
+
+async function fetchUserGames() {
+    const userUID = auth.currentUser.uid;  // <-- get the UID, not email
+    const q = query(collection(db, "games"), where("owners", "array-contains", userUID));
+    const snapshot = await getDocs(q);
+
+    const gamesArray = [];
+    snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        gamesArray.push({
+            name: data.name,
+            objectId: data.objectId,
+            thumbnail: data.thumbnail,
+            status: data.status,
+            newGame: data.newGame,
+            owners: data.owners    // array of UIDs
+        });
+    });
+
+    return gamesArray;
+}
+
+async function fetchAllGames() {
+    const gamesSnapshot = await getDocs(collection(db, "games"));
+    const allGameDocs = gamesSnapshot.docs.map(docSnap => docSnap.data());
+
+    // 1) Collect all unique owner UIDs across all games
+    const uniqueOwnerUIDs = new Set();
+    allGameDocs.forEach(game => {
+        const ownersArray = game.owners || [];
+        ownersArray.forEach(uid => uniqueOwnerUIDs.add(uid));
+    });
+
+    // 2) For each unique UID, fetch their user doc (library name)
+    //    We'll build a uid -> libraryName map.
+    const uidArray = [...uniqueOwnerUIDs];  // convert Set to array
+    const userMap = {}; // { uid: libraryName }
+
+    // Load each user doc, if it exists
+    for (let uid of uidArray) {
+        const userDocRef = doc(db, "users", uid);
+        const userSnap = await getDoc(userDocRef);
+        if (userSnap.exists()) {
+        const userData = userSnap.data();
+        userMap[uid] = userData.libraryName || "(No Library Name)";
+        } else {
+        // If no user doc found, fallback to some default
+        userMap[uid] = "(Unknown Owner)";
+        }
     }
-}
 
-function fetchExistingGames() {
-    var selectedLibrary = document.getElementById('libraryDropdown').value;
-    var url = `https://script.google.com/macros/s/AKfycbxlhxw69VE2Nx-_VaGzgRj1LcogTvmcfwjoQ0n9efEpDo0S1evEC1LlDZdQV8VjHdn-cQ/exec?library=${selectedLibrary}`;
+    // 3) Flatten each game doc for each owner
+    //    So if a game has 2 owners, we create 2 output items
+    const output = [];
+    allGameDocs.forEach(gameDoc => {
+        const ownersArray = gameDoc.owners || [];
+        ownersArray.forEach(uid => {
+            // Build a single object with the shape your display code expects
+            output.push({
+                owner: userMap[uid],          // e.g. "Alice's Library"
+                name: gameDoc.name,
+                objectId: gameDoc.objectId,
+                thumbnail: gameDoc.thumbnail,
+                newGame: gameDoc.newGame || "",
+                status: Array.isArray(gameDoc.status) ? gameDoc.status : []
+            });
+        });
+    });
 
-    return fetch(url)
-        .then(response => response.json())
-        .then(existingObjectIds => existingObjectIds)
-        .catch(error => console.error('Error:', error));
-}
-
-function fetchAllGames() {
-    var selectedLibrary = "ALLGAMESLIBRARY";
-    var url = `https://script.google.com/macros/s/AKfycbxlhxw69VE2Nx-_VaGzgRj1LcogTvmcfwjoQ0n9efEpDo0S1evEC1LlDZdQV8VjHdn-cQ/exec?library=${selectedLibrary}`;
-
-    return fetch(url)
-        .then(response => response.json())
-        .then(existingObjectIds => existingObjectIds)
-        .catch(error => console.error('Error:', error));
+    return output;
 }
 
 function fetchGameDetails(gameId) {
@@ -426,21 +505,14 @@ function fetchGameDetails(gameId) {
 
 function searchGames(button) {
     if (!isLoggedIn()) return;
-    
-    var libraryDropdown = document.getElementById('libraryDropdown');
-    var selectedLibrary = libraryDropdown.value;
 
-    if (selectedLibrary && selectedLibrary !== 'newLibrary') {
-        var query = document.getElementById('bggSearchQuery').value;
-        var searchUrl = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(query)}&type=boardgame`;
+    var query = document.getElementById('bggSearchQuery').value;
+    var searchUrl = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(query)}&type=boardgame`;
 
-        fetch(searchUrl)
-            .then(response => response.text())
-            .then(str => (new window.DOMParser()).parseFromString(str, "text/xml"))
-            .then(data => displaySearchResults(data, button));
-    } else {
-        alert ('Please select a library first.');
-    }
+    fetch(searchUrl)
+        .then(response => response.text())
+        .then(str => (new window.DOMParser()).parseFromString(str, "text/xml"))
+        .then(data => displaySearchResults(data, button));
 }
 
 function displaySearchResults(data, button) {
@@ -472,8 +544,8 @@ function displaySearchResults(data, button) {
         resultDiv.appendChild(thumbnailImg);
         resultDiv.appendChild(nameDiv);
 
-        var status = '[]';
-	var newGame = 'Y';
+        var status = [];
+	    var newGame = 'Y';
 
         // Setup click event
         resultDiv.onclick = createClickHandler(name, objectId, thumbnailImg, status, newGame, resultDiv);
@@ -487,15 +559,14 @@ function displaySearchResults(data, button) {
     button.scrollIntoView({ behavior: 'smooth' });
 }
 
-function displayGamesTab() {
+async function displayGamesTab() {
+    if (!isLoggedIn()) return;
+
     showLoadingOverlay();
 
-    console.time("fetchAllGames");
-    fetchAllGames().then(gamesData => {
-	console.timeEnd("fetchAllGames");
-
-	console.time("processAndBuildDOM");
-        const user = auth.currentUser ? auth.currentUser : { email: "nouser@email.com" };
+    try {
+        const gamesData = await fetchAllGames();
+        const userUID = auth.currentUser ? auth.currentUser.uid : null;
         var gamesDiv = document.getElementById('Games');
         gamesDiv.innerHTML = '<h1>Make Your Selections</h1>'; // Clear previous content and add title
 
@@ -515,23 +586,20 @@ function displayGamesTab() {
         checkboxDiv.appendChild(label);
         gamesDiv.appendChild(checkboxDiv);
 
-	// Filter out LibraryMetadata entries
-        gamesData = gamesData.filter(game => game.owner.toLowerCase() !== "librarymetadata");
-
-	// Sort the gamesData: Group by owner, new games first within each group, then alphabetically by name
-	var sortedGames = gamesData.sort((a, b) => {
-	    // Group by owner
-	    if (a.owner !== b.owner) {
-	        return a.owner.localeCompare(b.owner); // Alphabetical by owner
-	    }
-	
-	    // Within the same owner, prioritize new games
-	    if (a.newGame === "Y" && b.newGame !== "Y") return -1;
-	    if (a.newGame !== "Y" && b.newGame === "Y") return 1;
-	
-	    // If both are the same type (new or not), sort alphabetically by name
-	    return a.name.localeCompare(b.name);
-	});
+        // Sort the gamesData: Group by owner, new games first within each group, then alphabetically by name
+        var sortedGames = gamesData.sort((a, b) => {
+            // Group by owner
+            if (a.owner !== b.owner) {
+                return a.owner.localeCompare(b.owner); // Alphabetical by owner
+            }
+        
+            // Within the same owner, prioritize new games
+            if (a.newGame === "Y" && b.newGame !== "Y") return -1;
+            if (a.newGame !== "Y" && b.newGame === "Y") return 1;
+        
+            // If both are the same type (new or not), sort alphabetically by name
+            return a.name.localeCompare(b.name);
+        });
 
 
         var currentOwner = null;
@@ -548,7 +616,7 @@ function displayGamesTab() {
 
                 // Create a header for the owner's games
                 var ownerHeader = document.createElement('h2');
-                ownerHeader.innerHTML = `${currentOwner.charAt(0).toUpperCase()}${currentOwner.slice(1)}'s Games`;
+                ownerHeader.innerHTML = currentOwner;
                 ownerHeader.className = 'owner-header';
                 ownerHeader.onclick = createOwnerHeaderClickHandler(ownerHeader, ownerDiv);
 
@@ -565,21 +633,17 @@ function displayGamesTab() {
             var resultDiv = document.createElement('div');
             resultDiv.className = 'result-item';
             
-            let statusArray = [];
-            try {
-                statusArray = JSON.parse(game.status || "[]");
-            } catch (error) {
-                console.error("Error parsing status for game:", game.name, error);
-            }
+            let statusArray = Array.isArray(game.status) ? game.status : [];
 
-            // Set background color based on the parsed status
-            if (statusArray.includes(user.email)) {
+            // Set background color based on whether the user’s UID is in `statusArray`
+            if (userUID && statusArray.includes(userUID)) {
                 resultDiv.style.backgroundColor = "darkgreen"; // Current user selected
             } else if (statusArray.length > 0) {
                 resultDiv.style.backgroundColor = "lightgreen"; // At least one user selected
             } else {
                 resultDiv.style.backgroundColor = ""; // Default background
             }
+
 
             resultDiv.dataset.status = statusArray;
 
@@ -592,22 +656,22 @@ function displayGamesTab() {
             nameDiv.innerHTML = game.name;
             nameDiv.className = 'game-name';
 
-	    if (game.newGame === "Y") {
-		    // Create a "New Game" indicator
-		    const newGameIndicator = document.createElement('img');
-		    newGameIndicator.src = './new.png'; // Path to the "new game" icon
-		    newGameIndicator.alt = 'New Game';
-		    newGameIndicator.style = `
-		        position: absolute; 
-		        top: -10px; 
-		        left: -10px; 
-		        width: 40px; 
-		        height: 40px; 
-		    `;
-		
-		    // Append the "New Game" indicator to the resultDiv
-		    resultDiv.appendChild(newGameIndicator);
-		}
+            if (game.newGame === "Y") {
+                // Create a "New Game" indicator
+                const newGameIndicator = document.createElement('img');
+                newGameIndicator.src = './new.png'; // Path to the "new game" icon
+                newGameIndicator.alt = 'New Game';
+                newGameIndicator.style = `
+                    position: absolute; 
+                    top: -10px; 
+                    left: -10px; 
+                    width: 40px; 
+                    height: 40px; 
+                `;
+            
+                // Append the "New Game" indicator to the resultDiv
+                resultDiv.appendChild(newGameIndicator);
+            }
 
             // Create overlays but keep them hidden initially
             var websiteOverlay = document.createElement('div');
@@ -620,99 +684,90 @@ function displayGamesTab() {
                 window.open(`https://boardgamegeek.com/boardgame/${game.objectId}`, '_blank');
                 hideOverlays(websiteOverlay, addActionOverlay);
                 // Re-enable showing overlays on click
-                resultDiv.onclick = showOverlaysFunction(resultDiv, websiteOverlay, addActionOverlay);
+                resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
                 event.stopPropagation(); // Prevent triggering clicks on underlying elements
             };
 
             var addActionOverlay = document.createElement('div');
-		addActionOverlay.style = `
-		    position: absolute; 
-		    bottom: 0; 
-		    right: 0; 
-		    width: 100%; 
-		    height: 50%; 
-		    background-color: rgba(0, 255, 0, 0.5); 
-		    color: white; 
-		    display: flex; 
-		    justify-content: center; 
-		    align-items: center; 
-		    display: none;
-		    border-bottom-left-radius: 1rem; 
-		    border-bottom-right-radius: 1rem; 
-		    text-shadow: 2px 2px 4px #000000;
-		`;
-		
-		// Create an image element for the "Add/Remove" icon
-		var addActionImage = document.createElement('img');
-		addActionImage.src = './thumbUp.png'; // Path to the image
-		addActionImage.alt = 'Add/Remove';
-		addActionImage.style = `
-		    width: 90px; 
-		    height: 90px; 
-		`;
-		
-		// Append the image to the overlay
-		addActionOverlay.appendChild(addActionImage);
+            addActionOverlay.style = `
+                position: absolute; 
+                bottom: 0; 
+                right: 0; 
+                width: 100%; 
+                height: 50%; 
+                background-color: rgba(0, 255, 0, 0.5); 
+                color: white; 
+                display: flex; 
+                justify-content: center; 
+                align-items: center; 
+                display: none;
+                border-bottom-left-radius: 1rem; 
+                border-bottom-right-radius: 1rem; 
+                text-shadow: 2px 2px 4px #000000;
+            `;
+            
+            // Create an image element for the "Add/Remove" icon
+            var addActionImage = document.createElement('img');
+            addActionImage.src = './thumbUp.png'; // Path to the image
+            addActionImage.alt = 'Add/Remove';
+            addActionImage.style = `
+                width: 90px; 
+                height: 90px; 
+            `;
+            
+            // Append the image to the overlay
+            addActionOverlay.appendChild(addActionImage);
 
-		// Update the color of the image based on data-status
-		function updateThumbColor() {
-		    const status = resultDiv.dataset.status || "";
-		    const hasUsers = status.trim() !== ""; // Check if there are any users in data-status
-		    addActionImage.style.filter = hasUsers ? "none" : "grayscale(100%)"; // Gray if no users
-		}
-		
-		// Call updateThumbColor initially and on data-status changes
-		updateThumbColor();
+            // Update the color of the image based on data-status
+            function updateThumbColor() {
+                const status = resultDiv.dataset.status || "";
+                const hasUsers = status.trim() !== ""; // Check if there are any users in data-status
+                addActionImage.style.filter = hasUsers ? "none" : "grayscale(100%)"; // Gray if no users
+            }
+            
+            // Call updateThumbColor initially and on data-status changes
+            updateThumbColor();
 
-		var userCountIndicator = document.createElement('div');
-		userCountIndicator.style = `
-		    position: absolute; 
-		    top: 0px; 
-		    right: 0px; 
-		    width: 32px; 
-		    height: 32px; 
-		    border-radius: 16px; 
-		    background-color: rgba(0, 0, 0, 0.5); 
-		    color: white; 
-		    display: flex; 
-		    justify-content: center; 
-		    align-items: center; 
-		    font-weight: bold;
-		    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.5);
-		`;
-		
-		// Append the indicator to the resultDiv
-		resultDiv.appendChild(userCountIndicator);
-
-		// Function to update the user count and the indicator's visibility
-		function updateUserCount() {
-		    const status = resultDiv.dataset.status || "";
-		    const statusArray = status ? status.split(",") : []; // Split users by commas
-		    userCountIndicator.textContent = statusArray.length; // Update the count
-		    userCountIndicator.style.display = statusArray.length > 0 ? "flex" : "none"; // Hide if no users
-		}
-		
-		// Initial update of the user count
-		updateUserCount();
-		
-		// Click handler for the overlay
-		addActionOverlay.onclick = function(event) {
-		    createGameClickHandler(game, resultDiv)();
-		    hideOverlays(websiteOverlay, addActionOverlay);
-		    updateThumbColor();
-		    updateUserCount();
-		    // Re-enable showing overlays on click
-		    resultDiv.onclick = showOverlaysFunction(resultDiv, websiteOverlay, addActionOverlay);
-		    event.stopPropagation(); // Prevent triggering clicks on underlying elements
-		};
-
+            var userCountIndicator = document.createElement('div');
+            userCountIndicator.style = `
+                position: absolute; 
+                top: 0px; 
+                right: 0px; 
+                width: 32px; 
+                height: 32px; 
+                border-radius: 16px; 
+                background-color: rgba(0, 0, 0, 0.5); 
+                color: white; 
+                display: flex; 
+                justify-content: center; 
+                align-items: center; 
+                font-weight: bold;
+                box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.5);
+            `;
+            
+            // Append the indicator to the resultDiv
+            resultDiv.appendChild(userCountIndicator);
+            
+            // Initial update of the user count
+            updateUserCount(game.status || [], userCountIndicator);
+            
+            // Click handler for the overlay
+            addActionOverlay.onclick = function(event) {
+                createGameClickHandler(game, resultDiv, userCountIndicator)();
+                hideOverlays(websiteOverlay, addActionOverlay);
+                updateThumbColor();
+                //updateUserCount(game.status || []);
+                // Re-enable showing overlays on click
+                resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
+                event.stopPropagation(); // Prevent triggering clicks on underlying elements
+            };
 
             resultDiv.style.position = 'relative';
             resultDiv.appendChild(websiteOverlay);
             resultDiv.appendChild(addActionOverlay);
 
             // Initial click on the game item shows the overlays
-            resultDiv.onclick = showOverlaysFunction(resultDiv, websiteOverlay, addActionOverlay);
+            resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
 
             resultDiv.appendChild(thumbnailImg);
             resultDiv.appendChild(nameDiv);
@@ -720,29 +775,38 @@ function displayGamesTab() {
             rowDiv.appendChild(resultDiv);
         });
 
-	console.timeEnd("processAndBuildDOM");
         hideLoadingOverlay();
 
         checkbox.addEventListener('change', function() {
-	    const allGameItems = document.querySelectorAll('.result-item');
-	    allGameItems.forEach(item => {
-	        // Check if data-status contains any text (indicating users)
-	        const hasUsers = item.dataset.status && item.dataset.status.trim() !== "";
-	
-	        // Apply display logic
-	        if (this.checked) {
-	            if (!hasUsers) {
-	                item.style.display = 'none'; // Hide games with no users
-	            }
-	        } else {
-	            item.style.display = ''; // Show all games
-	        }
-	    });
-	});
-    });
+            const allGameItems = document.querySelectorAll('.result-item');
+            allGameItems.forEach(item => {
+                // Check if data-status contains any text (indicating users)
+                const hasUsers = item.dataset.status && item.dataset.status.trim() !== "";
+        
+                // Apply display logic
+                if (this.checked) {
+                    if (!hasUsers) {
+                        item.style.display = 'none'; // Hide games with no users
+                    }
+                } else {
+                    item.style.display = ''; // Show all games
+                }
+            });
+        });
+    } catch (error) {
+        console.error("Error fetching all games from Firestore:", error);
+        alert("Failed to load games. Please try again later.");
+        hideLoadingOverlay();
+    }
 }
 
-function showOverlaysFunction(resultDiv, websiteOverlay, addActionOverlay) {
+function updateUserCount(statusArray, userCountIndicator) {
+    const count = statusArray.length;
+    userCountIndicator.textContent = count;
+    userCountIndicator.style.display = count > 0 ? 'flex' : 'none';
+}
+
+function showOverlaysFunction(websiteOverlay, addActionOverlay) {
     return function() {
         // If the clicked game is already showing its overlays, hide them
         if (currentActiveOverlays.websiteOverlay === websiteOverlay &&
@@ -781,59 +845,55 @@ function hideCurrentActiveOverlays() {
 function searchLibrary(button) {
     if (!isLoggedIn()) return;
 
-    var libraryDropdown = document.getElementById('libraryDropdown');
-    var selectedLibrary = libraryDropdown.value;
+    showLoadingOverlay(); // Show the overlay before starting the fetch
+    document.getElementById('libraryResults').innerHTML = '';
 
-    if (selectedLibrary && selectedLibrary !== 'newLibrary') {
-        showLoadingOverlay(); // Show the overlay before starting the fetch
-        document.getElementById('libraryResults').innerHTML = '';
+    // Fetch the user's owned games from Firestore
+    fetchUserGames()
+        .then(gamesData => {
+            const gamesDiv = document.getElementById('libraryResults');
+            gamesDiv.innerHTML = ''; // Clear previous content
 
-        fetchExistingGames()
-            .then(gamesData => {
-                var gamesDiv = document.getElementById('libraryResults');
-                gamesDiv.innerHTML = ''; // Clear previous content and add title
+            // Sort the gamesData alphabetically
+            const sortedGames = gamesData.sort((a, b) => a.name.localeCompare(b.name));
 
-                // Sort the gamesData alphabetically
-                var sortedGames = gamesData.sort((a, b) => a.name.localeCompare(b.name));
+            // Create a row container for the results
+            const currentRow = document.createElement('div');
+            currentRow.className = 'result-row';
+            gamesDiv.appendChild(currentRow);
 
-                var currentRow;
-                currentRow = document.createElement('div');
-                currentRow.className = 'result-row';
-                gamesDiv.appendChild(currentRow);
+            // Render each game
+            sortedGames.forEach((game) => {
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'result-item';
 
-                sortedGames.forEach((game) => {
-                    var resultDiv = document.createElement('div');
-                    resultDiv.className = 'result-item';
-        
-                    var thumbnailImg = document.createElement('img');
-                    thumbnailImg.src = game.thumbnail; // Assuming thumbnail URL is available
-                    thumbnailImg.alt = game.name;
-                    thumbnailImg.className = 'thumbnail-img';
+                const thumbnailImg = document.createElement('img');
+                thumbnailImg.src = game.thumbnail || './no-image.png';
+                thumbnailImg.alt = game.name;
+                thumbnailImg.className = 'thumbnail-img';
 
-                    var nameDiv = document.createElement('div');
-                    nameDiv.innerHTML = game.name;
-                    nameDiv.className = 'game-name';
+                const nameDiv = document.createElement('div');
+                nameDiv.textContent = game.name;
+                nameDiv.className = 'game-name';
 
-                    resultDiv.onclick = createRemoveClickHandler(game, resultDiv);
+                // Attach the remove user-ownership click handler
+                resultDiv.onclick = createRemoveClickHandler(game, resultDiv);
 
-                    resultDiv.appendChild(thumbnailImg);
-                    resultDiv.appendChild(nameDiv);
+                resultDiv.appendChild(thumbnailImg);
+                resultDiv.appendChild(nameDiv);
 
-                    currentRow.appendChild(resultDiv);
-                });
-
-                hideLoadingOverlay(); // Hide the overlay once loading is complete
-            })
-            .catch(error => {
-                alert('An error occurred while loading the library. Please try again.');
-                console.error(error);
-                hideLoadingOverlay(); // Ensure overlay is hidden on error
+                currentRow.appendChild(resultDiv);
             });
 
-        button.scrollIntoView({ behavior: 'smooth' });
-    } else {
-        alert('Select A Library First');
-    }
+            hideLoadingOverlay(); // Hide the overlay once loading is complete
+        })
+        .catch(error => {
+            alert('An error occurred while loading your library. Please try again.');
+            console.error(error);
+            hideLoadingOverlay(); // Ensure overlay is hidden on error
+        });
+
+    button.scrollIntoView({ behavior: 'smooth' });
 }
 
 function toggleOwnerGames(ownerDiv) {
@@ -843,30 +903,60 @@ function toggleOwnerGames(ownerDiv) {
 
 function createClickHandler(name, objectId, thumbnailImg, status, newGame, resultDiv) {
     if (!isLoggedIn()) return;
-    
-    return function() {
-        var extractedData = [{ name, objectId: Number(objectId), thumbnail: thumbnailImg.src, status, newGame }];
-        
-        fetchExistingGames().then(gamesDataFromSheet => {
-            var uniqueGames = extractedData.filter(game => !gamesDataFromSheet.map(g => g.objectId).includes(game.objectId));
-            if (uniqueGames.length > 0) {
-                sendToGoogleSheet({ games: uniqueGames });
-            } else {
-                alert ('Game Was Already In Library');
-            }
-        });
 
-        // Update the background color
-        resultDiv.style.backgroundColor = 'green';
-        resultDiv.style.animation = 'spin-grow 1s linear forwards';
+    return async function() {
+        try {
+        // Construct the single game object
+        const singleGame = {
+            name,
+            objectId: Number(objectId),
+            thumbnail: thumbnailImg.src,
+            status,
+            newGame
+        };
+
+        // 1) Fetch the user's games
+        const existingGames = await fetchUserGames();
+
+        // 2) If the user owns no games, prompt for a library name once
+        if (existingGames.length === 0) {
+            const libraryName = prompt(
+            "This is your first game! What would you like others to see your library called?"
+            );
+            if (libraryName) {
+            const userUID = auth.currentUser.uid;
+            await setDoc(doc(db, "users", userUID), { libraryName }, { merge: true });
+            console.log(`Library name set to "${libraryName}" for UID ${userUID}`);
+            }
+        }
+
+        // 3) Check if user already owns this specific game
+        const existingObjectIds = existingGames.map(g => g.objectId);
+        if (!existingObjectIds.includes(singleGame.objectId)) {
+            // Not owned: add the game
+            await addGame(singleGame);
+            console.log("Game added to Firestore:", singleGame.name);
+        } else {
+            // Already owned
+            alert("Game Was Already In Library");
+        }
+
+        // 4) Update the background color/animation
+        resultDiv.style.backgroundColor = "green";
+        resultDiv.style.animation = "spin-grow 1s linear forwards";
+
+        } catch (err) {
+        console.error("Error in createClickHandler:", err);
+        alert("Could not add or check this game. Please try again later.");
+        }
     };
-}
+}  
 
 function createRemoveClickHandler(game, resultDiv) {
     if (!isLoggedIn()) return;
     
     return function() {
-        removeFromGoogleSheet(game.objectId);
+        removeGame(game.objectId);
 
         // Apply CSS animation
         resultDiv.style.backgroundColor = 'red';
@@ -879,61 +969,64 @@ function createRemoveClickHandler(game, resultDiv) {
     };
 }
 
-function createGameClickHandler(game, resultDiv) {
-	return function () {
-		if (!isLoggedIn() || game.animating) return; // Prevent handling clicks if animation is ongoing
+function createGameClickHandler(game, resultDiv, userCountIndicator) {
+    return async function() {
+        if (!isLoggedIn() || game.animating) return; // Prevent multiple clicks
+        game.animating = true;
 
-	        const user = auth.currentUser;
-	
-	        game.animating = true; // Set the animating flag
-	
-	        // Parse the status array from the game's status field
-	        let statusArray = [];
-	        try {
-	            	statusArray = JSON.parse(game.status || "[]");
-	        } catch (error) {
-	            	console.error("Error parsing game status:", error);
-	        }
+        const userUID = auth.currentUser.uid;
 
-		var action = "remove";
-	        // Toggle the current user's email in the array
-	        if (statusArray.includes(user.email)) {
-	            	// Remove the user if already in the array
-	            	statusArray = statusArray.filter(email => email !== user.email);
-			action = "remove";
-	        } else {
-	            	// Add the user if not already in the array
-	            	statusArray.push(user.email);
-			action = "add";
-	        }
-	
-	        // Update the game.status to the updated array as a JSON string
-	        game.status = JSON.stringify(statusArray);
-		resultDiv.dataset.status = statusArray;
-	
-		// Send the updated status to Google Sheets
-	        updateGameInSheet(game, action);
-	
-	        // Update the background color based on the status
-	        if (statusArray.includes(user.email)) {
-	        	resultDiv.style.backgroundColor = "darkgreen"; // Current user selected
-	        } else if (statusArray.length > 0) {
-	        	resultDiv.style.backgroundColor = "lightgreen"; // At least one user selected
-	        } else {
-	        	resultDiv.style.backgroundColor = ""; // Default background
-	        }
-	
-	        // Reset animation flag after animation completes
-	        resultDiv.style.animation = "spin-grow 1s linear forwards";
-	        resultDiv.addEventListener(
-			"animationend",
-			function () {
-				resultDiv.style.animation = "";
-				game.animating = false;
-			},
-			{ once: true }
-		);
-	};
+        // 1) Ensure game.status is an array (fallback to empty if missing or invalid)
+        let statusArray = Array.isArray(game.status) ? [...game.status] : [];
+
+        // 2) Determine whether we are adding or removing the current user
+        let action;
+        if (statusArray.includes(userUID)) {
+            // Remove user from status
+            statusArray = statusArray.filter(uid => uid !== userUID);
+            action = "remove";
+        } else {
+            // Add user to status
+            statusArray.push(userUID);
+            action = "add";
+        }
+
+        // 3) Update the game object in memory for immediate UI feedback
+        //    (So subsequent clicks see the updated array.)
+        game.status = statusArray;
+
+        // Update the user count indicator **immediately**
+        updateUserCount(statusArray, userCountIndicator);
+
+        // 4) Update the background color
+        if (statusArray.includes(userUID)) {
+            resultDiv.style.backgroundColor = "darkgreen"; // Currently selected by this user
+        } else if (statusArray.length > 0) {
+            resultDiv.style.backgroundColor = "lightgreen"; // Selected by someone else
+        } else {
+            resultDiv.style.backgroundColor = ""; // Not selected by anyone
+        }
+
+        // 5) Firestore update
+        try {
+            await updateGame(game, action); 
+            // e.g., updateGame calls arrayUnion() or arrayRemove() for doc(db, "games", game.objectId)
+        } catch (err) {
+            console.error("Error updating game status in Firestore:", err);
+            alert("Could not update status in Firestore. Please try again later.");
+        }
+
+        // 6) Spin-grow animation, then release the animation flag
+        resultDiv.style.animation = "spin-grow 1s linear forwards";
+        resultDiv.addEventListener(
+            "animationend",
+            function() {
+                resultDiv.style.animation = "";
+                game.animating = false;
+            },
+            { once: true }
+        );
+    };
 }
 
 function createOwnerHeaderClickHandler(ownerHeader, ownerDiv) {
@@ -943,160 +1036,72 @@ function createOwnerHeaderClickHandler(ownerHeader, ownerDiv) {
     };
 }
 
-function updateGameInSheet(game, action) {
-    const user = auth.currentUser;
-    const selectedLibrary = game.owner;
-    const url = `https://script.google.com/macros/s/AKfycbxlhxw69VE2Nx-_VaGzgRj1LcogTvmcfwjoQ0n9efEpDo0S1evEC1LlDZdQV8VjHdn-cQ/exec?library=${selectedLibrary}`;
+async function updateGame(game, action) {
+    const userUID = auth.currentUser.uid;
+    const docRef = doc(db, "games", String(game.objectId));
 
-    const payload = {
-        action: "update",
+    if (action === "add") {
+        await updateDoc(docRef, {
+        status: arrayUnion(userUID)
+        });
+    } else {
+        await updateDoc(docRef, {
+        status: arrayRemove(userUID)
+        });
+    }
+    console.log(`Game status updated in Firestore for ${game.name}: ${action}`);
+}
+  
+// Simplified: no "first-time" check in here
+async function addGame(game) {
+    const userUID = auth.currentUser.uid;
+    const docRef = doc(db, "games", String(game.objectId));
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+        // create brand new doc
+        await setDoc(docRef, {
         objectId: game.objectId,
-        user: user.email,
-        change: action, // "add" or "remove"
-    };
+        name: game.name,
+        thumbnail: game.thumbnail,
+        newGame: game.newGame,
+        status: Array.isArray(game.status) ? game.status : [],
+        owners: [userUID]
+        });
+        console.log(`Created new doc: ${game.name} (${game.objectId})`);
+    } else {
+        // doc exists, arrayUnion user to owners
+        await updateDoc(docRef, {
+        owners: arrayUnion(userUID)
+        });
+        console.log(`Added owner ${userUID} to: ${game.name} (${game.objectId})`);
+    }
+}  
 
-    fetch(url, {
-        method: "POST",
-        mode: 'no-cors',
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-    })
-    .then(() => {
-        console.log(`Game status updated for ${game.name}: ${action}`);
-    })
-    .catch(error => {
-        console.error("Error updating game status:", error);
-    });
-}
+async function removeGame(objectId) {
+    const userUID = auth.currentUser.uid;
+    const docRef = doc(db, "games", String(objectId));
+    const docSnap = await getDoc(docRef);
 
-function sendToGoogleSheet(data) {
-    var selectedLibrary = document.getElementById('libraryDropdown').value;
-    const user = auth.currentUser;
-    var url = `https://script.google.com/macros/s/AKfycbxlhxw69VE2Nx-_VaGzgRj1LcogTvmcfwjoQ0n9efEpDo0S1evEC1LlDZdQV8VjHdn-cQ/exec?library=${selectedLibrary}&email=${user.email}`;
-    fetch(url, {
-        method: 'POST',
-        mode: 'no-cors', // As Google Apps Script does not support CORS
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-    })
-    .then(response => console.log('Data sent to Google Sheets'))
-    .catch(error => console.error('Error:', error));
-}
-
-function removeFromGoogleSheet(objectId) {
-    var selectedLibrary = document.getElementById('libraryDropdown').value;
-    var url = `https://script.google.com/macros/s/AKfycbxlhxw69VE2Nx-_VaGzgRj1LcogTvmcfwjoQ0n9efEpDo0S1evEC1LlDZdQV8VjHdn-cQ/exec?library=${selectedLibrary}`;
-    const payload = {
-        action: 'remove',
-        objectId: objectId
-    };
-
-    fetch(url, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-    })
-    .then(response => console.log('Row removed'))
-    .catch(error => console.error('Error:', error));
-}
-
-function populateLibraryDropdown() {
-    const libraryDropdown = document.getElementById('libraryDropdown');
-    libraryDropdown.length = 1; // Clear all options except the default one
-    libraryDropdown.selectedIndex = 0;
-
-    const user = auth.currentUser;
-    if (!user) {
-        // User is not logged in; show a message
-        const option = document.createElement('option');
-        option.value = "";
-        option.textContent = "Please login to use this feature...";
-        option.disabled = true;
-        libraryDropdown.appendChild(option);
-        hideLoadingOverlay();
+    if (!docSnap.exists()) {
+        console.warn(`Doc for objectId ${objectId} does not exist.`);
         return;
     }
 
-    showLoadingOverlay();
+    // Remove the user from owners
+    await updateDoc(docRef, {
+        owners: arrayRemove(userUID)
+    });
 
-    const url = `https://script.google.com/macros/s/AKfycbxlhxw69VE2Nx-_VaGzgRj1LcogTvmcfwjoQ0n9efEpDo0S1evEC1LlDZdQV8VjHdn-cQ/exec?type=sheetNames&email=${user.email}`;
-    fetch(url, {
-        method: "GET",
-        redirect: "follow", // Ensure redirects are followed
-        headers: {
-            "Content-Type": "text/plain;charset=utf-8", // Avoid preflight
-        },
-    })
-        .then(response => response.text()) // Read response as text
-        .then(text => {
-            const sheetNames = JSON.parse(text); // Parse JSON manually
-            if (sheetNames.error) {
-                alert(sheetNames.error);
-                hideLoadingOverlay();
-                return;
-            }
-
-            // Keep the "Add New Library" option
-            const addLibraryOption = document.createElement('option');
-            addLibraryOption.value = "newLibrary";
-            addLibraryOption.textContent = "Add New Library";
-
-            libraryDropdown.length = 1; // Reset dropdown
-            libraryDropdown.selectedIndex = 0;
-
-            // Add valid sheet names, filtering out invalid options
-            sheetNames
-                .filter(name => name.trim() !== "") // Exclude empty names
-                .filter(name => name.toLowerCase() !== "librarymetadata") // Exclude LibraryMetadata
-                .sort((a, b) => a.localeCompare(b)) // Sort names alphabetically
-                .forEach(name => {
-                    const option = document.createElement('option');
-                    option.value = name.toLowerCase();
-                    option.textContent = name.charAt(0).toUpperCase() + name.slice(1);
-                    libraryDropdown.appendChild(option);
-                });
-
-            // Add the "Add New Library" option to the dropdown
-            libraryDropdown.appendChild(addLibraryOption);
-
-            hideLoadingOverlay();
-        })
-        .catch(error => {
-            console.error("Error fetching sheet names:", error);
-            alert("An error occurred while fetching library options.");
-            hideLoadingOverlay();
-        });
-}
-
-function handleLibraryChange() {
-    var libraryDropdown = document.getElementById('libraryDropdown');
-    var selectedValue = libraryDropdown.value;
-    document.getElementById('libraryResults').innerHTML = '';
-
-    if (selectedValue === 'newLibrary') {
-        if (!isLoggedIn()) return;
-        
-        var newLibraryName = prompt("Please enter a name for the new library:");
-        if (newLibraryName) {
-            // Add the new library to the dropdown
-            var newOption = document.createElement('option');
-            newOption.value = newLibraryName.toLowerCase();
-            newOption.textContent = newLibraryName.charAt(0).toUpperCase() + newLibraryName.slice(1);
-            libraryDropdown.add(newOption, libraryDropdown.options[libraryDropdown.options.length - 1]);
-
-            // Select the newly added library
-            libraryDropdown.value = newLibraryName.toLowerCase();
-        } else {
-            // Reset the selection if the user cancels or enters no name
-            libraryDropdown.value = '';
-        }
+    // Check if owners is now empty
+    const updatedSnap = await getDoc(docRef);
+    const updatedOwners = updatedSnap.data().owners || [];
+    if (updatedOwners.length === 0) {
+        // Optional: delete the document entirely if no owners remain
+        await deleteDoc(docRef);
+        console.log(`Deleted doc for objectId ${objectId}, as no owners remain.`);
+    } else {
+        console.log(`Removed UID ${userUID} from owners for objectId ${objectId}.`);
     }
 }
 
