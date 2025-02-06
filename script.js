@@ -527,8 +527,10 @@ function fetchGameDetails(gameId) {
         .catch(error => console.error('Error fetching game details:', error));
 }
 
-function searchGames(button) {
+async function searchGames(button) {
     if (!isLoggedIn()) return;
+    const hasAccess = await hasLibrary(); // Wait for the result
+    if (!hasAccess) return;
 
     var query = document.getElementById('bggSearchQuery').value;
     var searchUrl = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(query)}&type=boardgame`;
@@ -866,8 +868,10 @@ function hideCurrentActiveOverlays() {
     };
 }
 
-function searchLibrary(button) {
+async function searchLibrary(button) {
     if (!isLoggedIn()) return;
+    const hasAccess = await hasLibrary(); // Wait for the result
+    if (!hasAccess) return;
 
     showLoadingOverlay(); // Show the overlay before starting the fetch
     document.getElementById('libraryResults').innerHTML = '';
