@@ -218,28 +218,6 @@ function isLoggedIn() {
     return true;
 }
 
-async function hasLibrary() {
-    const userUID = auth.currentUser.uid
-
-    if (!userUID) {
-        console.error("No user UID provided.");
-        return false;
-    }
-
-    try {
-        const userDocRef = doc(db, "users", userUID);
-        const userDoc = await getDoc(userDocRef);
-
-        if (!userDoc.exists()){
-            alert("You do not have access to any libraries yet. Contact Josh for access.");
-        }
-        return userDoc.exists(); // Returns true if the document exists, otherwise false
-    } catch (error) {
-        console.error("Error checking user existence:", error);
-        return false;
-    }
-}
-
 function openTab(evt, tabName) {
     var i, tabcontent, tablinks;
 
@@ -278,17 +256,15 @@ function openTab(evt, tabName) {
 document.getElementById("homeTab").addEventListener("click", (event) => openTab(event, "Home"));
 document.getElementById("gamesTab").addEventListener("click", (event) => openTab(event, "Games"));
 document.getElementById("modifyGamesTab").addEventListener("click", (event) => openTab(event, "ModifyGames"));
-document.getElementById("getCollectionButton").addEventListener("click", getBggLibrary);
+document.getElementById("getCollectionButton").addEventListener("click", getCollection);
 document.getElementById("searchGamesButton").addEventListener("click", () => searchGames(document.getElementById("searchGamesButton")));
 document.getElementById("searchLibraryButton").addEventListener("click", () => searchLibrary(document.getElementById("searchLibraryButton")));
 
 // Automatically open the default tab on page load
 document.getElementById("homeTab").click();
 
-async function getBggLibrary() {
+function getCollection() {
     if (!isLoggedIn()) return;
-    const hasAccess = await hasLibrary(); // Wait for the result
-    if (!hasAccess) return;
     
     var username = document.getElementById('bggUsername').value;
     var statusDiv = document.getElementById('statusMessage');
@@ -300,7 +276,7 @@ async function getBggLibrary() {
                 if (response.status === 202) {
                     // Request is queued, show retry message and retry after some delay
                     statusDiv.innerHTML = 'Shelving Games. Please Wait...';
-                    setTimeout(() => getBggLibrary(), 10000); // Retry after 10 seconds
+                    setTimeout(() => getCollection(), 10000); // Retry after 10 seconds
                 } else if (response.ok) {
                     return response.text();
                 } else {
