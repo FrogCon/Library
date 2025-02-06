@@ -1079,7 +1079,7 @@ async function updateGame(game, action) {
     }
     console.log(`Game status updated in Firestore for ${game.name}: ${action}`);
 }
-  
+
 // Simplified: no "first-time" check in here
 async function addGame(game) {
     const userUID = auth.currentUser.uid;
