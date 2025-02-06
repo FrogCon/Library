@@ -22,6 +22,43 @@ import { getFirestore, collection, doc, query, where, updateDoc, arrayRemove, ar
 const auth = getAuth(); // Uses the app initialized in index.html
 const db = getFirestore(); // Uses the same app
 
+async function migrateGameData() {
+    console.log("Starting migration...");
+
+    // Step 1: Fetch all games
+    const gamesSnapshot = await getDocs(collection(db, "games"));
+    const games = gamesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // Step 2: Process each game and update corresponding users
+    for (let game of games) {
+        const { objectId, status = [], newGame } = game;
+
+        console.log(`Processing game: ${game.name} (${objectId})`);
+
+        // Step 3: Update users with "wanted" games
+        for (let userUID of status) {
+            const userDocRef = doc(db, "users", userUID);
+            await updateDoc(userDocRef, {
+                wantedGames: arrayUnion(objectId) // Add this game to their "wanted" list
+            });
+            console.log(`→ Updated ${userUID}: Added game ${objectId} to wantedGames`);
+        }
+
+        // Step 4: If the game is "New", find all owners and mark it in their user docs
+        if (newGame === "Y" && game.owners) {
+            for (let userUID of game.owners) {
+                const userDocRef = doc(db, "users", userUID);
+                await updateDoc(userDocRef, {
+                    newGames: arrayUnion(objectId) // Add this game to their "new" list
+                });
+                console.log(`→ Updated ${userUID}: Marked game ${objectId} as new`);
+            }
+        }
+    }
+
+    console.log("Migration complete!");
+}
+
 // Authentication Functions
 function signUp(email, password) {
     createUserWithEmailAndPassword(auth, email, password)
@@ -279,7 +316,7 @@ function openTab(evt, tabName) {
 document.getElementById("homeTab").addEventListener("click", (event) => openTab(event, "Home"));
 document.getElementById("gamesTab").addEventListener("click", (event) => openTab(event, "Games"));
 document.getElementById("modifyGamesTab").addEventListener("click", (event) => openTab(event, "ModifyGames"));
-document.getElementById("getCollectionButton").addEventListener("click", getBggLibrary);
+document.getElementById("getCollectionButton").addEventListener("click", migrateGameData);
 document.getElementById("searchGamesButton").addEventListener("click", () => searchGames(document.getElementById("searchGamesButton")));
 document.getElementById("searchLibraryButton").addEventListener("click", () => searchLibrary(document.getElementById("searchLibraryButton")));
 
