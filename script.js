@@ -219,8 +219,12 @@ function isLoggedIn() {
 }
 
 async function hasLibrary() {
-    const user = auth.currentUser;
-    const userUID = user.id;
+    const userUID = auth.currentUser.uid
+
+    if (!userUID) {
+        console.error("No user UID provided.");
+        return false;
+    }
 
     try {
         const userDocRef = doc(db, "users", userUID);
