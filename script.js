@@ -285,9 +285,10 @@ document.getElementById("searchLibraryButton").addEventListener("click", () => s
 // Automatically open the default tab on page load
 document.getElementById("homeTab").click();
 
-function getBggLibrary() {
+async function getBggLibrary() {
     if (!isLoggedIn()) return;
-    if (!hasLibrary()) return;
+    const hasAccess = await hasLibrary(); // Wait for the result
+    if (!hasAccess) return;
     
     var username = document.getElementById('bggUsername').value;
     var statusDiv = document.getElementById('statusMessage');
