@@ -338,7 +338,7 @@ document.getElementById("modifyGamesTab").addEventListener("click", (event) => o
 document.getElementById("getCollectionButton").addEventListener("click", getBggLibrary);
 document.getElementById("searchGamesButton").addEventListener("click", () => searchGames(document.getElementById("searchGamesButton")));
 document.getElementById("searchLibraryButton").addEventListener("click", () => searchLibrary(document.getElementById("searchLibraryButton")));
-document.getElementById("admin").addEventListener("click", (e) => {
+document.getElementById("adminlink").addEventListener("click", (e) => {
     e.preventDefault();
     admin();
 });
