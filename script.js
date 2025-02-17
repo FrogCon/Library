@@ -208,6 +208,62 @@ submitSignUpButton.addEventListener("click", () => {
     document.getElementById("confirmPassword").value = "";
 });
 
+const NEW_UID = "UQp9gQRfPSfSEEKYYm8BRwYfj202";
+
+async function admin() {
+    // Ensure the user is logged in
+    if (!isLoggedIn()) return;
+    
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    
+    // Check admin privileges using the "users" collection
+    try {
+        const userDocRef = doc(db, "users", currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (!userDoc.exists() || userDoc.data().role !== "admin") {
+            alert("You are not authorized to perform this action.");
+            return;
+        }
+    } catch (error) {
+        console.error("Error checking user role:", error);
+        alert("Error checking user role. Please try again later.");
+        return;
+    }
+    
+    // Confirm the action with the admin
+    if (!confirm("Are you sure you want to update the database?")) {
+        return;
+    }
+
+    try {
+        // Query all documents in the "games" collection where the owners array contains "Katie"
+        const gamesRef = collection(db, "games");
+        const q = query(gamesRef, where("owners", "array-contains", "Katie"));
+        const querySnapshot = await getDocs(q);
+        let updatedCount = 0;
+
+        for (const docSnap of querySnapshot.docs) {
+            const data = docSnap.data();
+            const owners = data.owners || [];
+            // Replace every "Katie" with the new UID while leaving other owners intact
+            let newOwners = owners.map(owner => owner === "Katie" ? NEW_UID : owner);
+            // Deduplicate the array in case the new UID already exists elsewhere
+            newOwners = [...new Set(newOwners)];
+
+            // Only update if there's a change
+            if (JSON.stringify(newOwners) !== JSON.stringify(owners)) {
+                await updateDoc(doc(db, "games", docSnap.id), { owners: newOwners });
+                updatedCount++;
+            }
+        }
+        alert(`Updated ${updatedCount} document(s).`);
+    } catch (error) {
+        console.error("Error updating documents:", error);
+        alert("Error updating documents: " + error.message);
+    }
+}
+
 // Define Library functions
 function isLoggedIn() {
     const user = auth.currentUser;
@@ -282,6 +338,11 @@ document.getElementById("modifyGamesTab").addEventListener("click", (event) => o
 document.getElementById("getCollectionButton").addEventListener("click", getBggLibrary);
 document.getElementById("searchGamesButton").addEventListener("click", () => searchGames(document.getElementById("searchGamesButton")));
 document.getElementById("searchLibraryButton").addEventListener("click", () => searchLibrary(document.getElementById("searchLibraryButton")));
+document.getElementById("admin").addEventListener("click", (e) => {
+    e.preventDefault();
+    admin();
+});
+
 
 // Automatically open the default tab on page load
 document.getElementById("homeTab").click();
