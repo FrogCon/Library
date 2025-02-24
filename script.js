@@ -259,7 +259,7 @@ async function admin() {
                 const ownerCollection = collection(db, ownerUID);
 
                 // Basic sanitizing for the Firestore doc ID
-                let docName = (newDocData.name || "Untitled") + "_" + newDocData.objectId;
+                let docName = ((newDocData.name || "Untitled") + "_" + newDocData.objectId)
                     .replace(/\//g, "-")
                     .replace(/\./g, "-")
                     .replace(/#/g, "-")
