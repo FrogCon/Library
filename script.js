@@ -1,4 +1,3 @@
-var ownerGamesVisibility = {};
 var currentActiveOverlays = {
     websiteOverlay: null,
     addActionOverlay: null
@@ -208,82 +207,6 @@ submitSignUpButton.addEventListener("click", () => {
     document.getElementById("confirmPassword").value = "";
 });
 
-const NEW_UID = "PNV486SZnWMloMY4KUG8Az3rhYR2";
-
-async function admin() {
-    // 1) Ensure the user is logged in
-    if (!isLoggedIn()) return;
-
-    // 2) Verify current user has an admin role
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-    try {
-        const userDocRef = doc(db, "users", currentUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (!userDoc.exists() || userDoc.data().role !== "admin") {
-            alert("You are not authorized to perform this action.");
-            return;
-        }
-    } catch (error) {
-        console.error("Error checking user role:", error);
-        alert("Error checking user role. Please try again later.");
-        return;
-    }
-
-    // 3) Confirm the action with the admin
-    if (!confirm("Are you sure you want to create new top-level collections for each owner’s UID, doc-named by `name`?")) {
-        return;
-    }
-
-    try {
-        // 4) Fetch every game from the main "games" collection
-        const gamesRef = collection(db, "games");
-        const querySnapshot = await getDocs(gamesRef);
-
-        let totalCreated = 0;
-
-        // 5) For each game doc in "games"
-        for (const docSnap of querySnapshot.docs) {
-            const data = docSnap.data();
-            const ownersArray = data.owners || [];
-
-            // If `owners` is empty or missing, skip
-            if (!ownersArray.length) continue;
-
-            // Remove the `owners` field, keep the rest
-            const { owners, ...newDocData } = data;
-
-            // 6) For each owner, create a doc in a new top-level collection
-            //    named exactly that UID, with the doc ID = the game’s `name` (sanitized)
-            for (const ownerUID of ownersArray) {
-                const ownerCollection = collection(db, ownerUID);
-
-                // Basic sanitizing for the Firestore doc ID
-                let docName = ((newDocData.name || "Untitled") + "_" + newDocData.objectId)
-                    .replace(/\//g, "-")
-                    .replace(/\./g, "-")
-                    .replace(/#/g, "-")
-                    .replace(/\$/g, "-")
-                    .replace(/\[/g, "-")
-                    .replace(/\]/g, "-")
-                    .replace(/\s+/g, "_")
-                    .trim();
-                
-                const ownerDocRef = doc(ownerCollection, docName);
-
-                // Write/overwrite this doc in the new top-level collection
-                await setDoc(ownerDocRef, newDocData);
-                totalCreated++;
-            }
-        }
-
-        alert(`Done! Created/updated a total of ${totalCreated} documents in new top-level UID collections, named by "name".`);
-    } catch (error) {
-        console.error("Error restructuring documents:", error);
-        alert("Error restructuring documents: " + error.message);
-    }
-}
-
 // Define Library functions
 function isLoggedIn() {
     const user = auth.currentUser;
@@ -293,28 +216,6 @@ function isLoggedIn() {
         return false;
     }
     return true;
-}
-
-async function hasLibrary() {
-    const userUID = auth.currentUser.uid
-
-    if (!userUID) {
-        console.error("No user UID provided.");
-        return false;
-    }
-
-    try {
-        const userDocRef = doc(db, "users", userUID);
-        const userDoc = await getDoc(userDocRef);
-
-        if (!userDoc.exists()){
-            alert("You do not have access to any libraries yet. Contact Josh for access.");
-        }
-        return userDoc.exists(); // Returns true if the document exists, otherwise false
-    } catch (error) {
-        console.error("Error checking user existence:", error);
-        return false;
-    }
 }
 
 function openTab(evt, tabName) {
@@ -355,22 +256,15 @@ function openTab(evt, tabName) {
 document.getElementById("homeTab").addEventListener("click", (event) => openTab(event, "Home"));
 document.getElementById("gamesTab").addEventListener("click", (event) => openTab(event, "Games"));
 document.getElementById("modifyGamesTab").addEventListener("click", (event) => openTab(event, "ModifyGames"));
-document.getElementById("getCollectionButton").addEventListener("click", getBggLibrary);
+document.getElementById("getCollectionButton").addEventListener("click", getCollection);
 document.getElementById("searchGamesButton").addEventListener("click", () => searchGames(document.getElementById("searchGamesButton")));
 document.getElementById("searchLibraryButton").addEventListener("click", () => searchLibrary(document.getElementById("searchLibraryButton")));
-document.getElementById("adminlink").addEventListener("click", (e) => {
-    e.preventDefault();
-    admin();
-});
-
 
 // Automatically open the default tab on page load
 document.getElementById("homeTab").click();
 
-async function getBggLibrary() {
+function getCollection() {
     if (!isLoggedIn()) return;
-    const hasAccess = await hasLibrary(); // Wait for the result
-    if (!hasAccess) return;
     
     var username = document.getElementById('bggUsername').value;
     var statusDiv = document.getElementById('statusMessage');
@@ -382,7 +276,7 @@ async function getBggLibrary() {
                 if (response.status === 202) {
                     // Request is queued, show retry message and retry after some delay
                     statusDiv.innerHTML = 'Shelving Games. Please Wait...';
-                    setTimeout(() => getBggLibrary(), 10000); // Retry after 10 seconds
+                    setTimeout(() => getCollection(), 10000); // Retry after 10 seconds
                 } else if (response.ok) {
                     return response.text();
                 } else {
@@ -397,6 +291,7 @@ async function getBggLibrary() {
             })
             .then(data => {
                 if (data) {
+                    globalXmlData = data;
                     prepareData(data);
                 }
             })
@@ -478,7 +373,7 @@ function prepareData(data) {
 
         gamesToRemove.forEach(game => {
             if (confirm(`Remove "${game.name}" from your ownership?`)) {
-            removeGame(game.objectId);
+            removeGame(game);
             }
         });
 
@@ -512,77 +407,61 @@ function prepareData(data) {
     });
 }
   
-
 async function fetchUserGames() {
-    const userUID = auth.currentUser.uid;  // <-- get the UID, not email
-    const q = query(collection(db, "games"), where("owners", "array-contains", userUID));
-    const snapshot = await getDocs(q);
+  const userUID = auth.currentUser.uid;
+  const userCollectionRef = collection(db, userUID); 
+  const snapshot = await getDocs(userCollectionRef);
 
-    const gamesArray = [];
-    snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        gamesArray.push({
-            name: data.name,
-            objectId: data.objectId,
-            thumbnail: data.thumbnail,
-            status: data.status,
-            newGame: data.newGame,
-            owners: data.owners    // array of UIDs
-        });
+  const gamesArray = [];
+  snapshot.forEach((docSnap) => {
+    const data = docSnap.data();
+    gamesArray.push({
+      name: data.name,
+      docName: docSnap.id,
+      objectId: data.objectId,
+      thumbnail: data.thumbnail,
+      newGame: data.newGame, 
+      status: data.status
     });
+  });
 
-    return gamesArray;
+  return gamesArray;
 }
 
 async function fetchAllGames() {
-    const gamesSnapshot = await getDocs(collection(db, "games"));
-    const allGameDocs = gamesSnapshot.docs.map(docSnap => docSnap.data());
-
-    // 1) Collect all unique owner UIDs across all games
-    const uniqueOwnerUIDs = new Set();
-    allGameDocs.forEach(game => {
-        const ownersArray = game.owners || [];
-        ownersArray.forEach(uid => uniqueOwnerUIDs.add(uid));
-    });
-
-    // 2) For each unique UID, fetch their user doc (library name)
-    //    We'll build a uid -> libraryName map.
-    const uidArray = [...uniqueOwnerUIDs];  // convert Set to array
-    const userMap = {}; // { uid: libraryName }
-
-    // Load each user doc, if it exists
-    for (let uid of uidArray) {
-        const userDocRef = doc(db, "users", uid);
-        const userSnap = await getDoc(userDocRef);
-        if (userSnap.exists()) {
-        const userData = userSnap.data();
-        userMap[uid] = userData.libraryName || "(No Library Name)";
-        } else {
-        // If no user doc found, fallback to some default
-        userMap[uid] = "(Unknown Owner)";
-        }
+    // Get all users (to know their UID and libraryName)
+    const usersSnap = await getDocs(collection(db, "users"));
+    let gameMap = new Map(); // key: objectId, value: game data plus owner info
+  
+    // For each user, load their personal top-level collection
+    for (const userDoc of usersSnap.docs) {
+      const userUID = userDoc.id;
+      const libraryName = userDoc.data().libraryName || "(No Library Name)";
+      const userGamesSnap = await getDocs(collection(db, userUID));
+  
+      userGamesSnap.forEach(gameDoc => {
+        const gData = gameDoc.data();
+        // Save additional info for grouping later
+        gData.ownerUID = userUID;
+        gData.libraryName = libraryName;
+        gData.docName = gameDoc.id;
+        const objectId = gData.objectId;
+  
+        if (gameMap.has(objectId)) {
+            const existing = gameMap.get(objectId);
+            if (!existing.sharedOwners) {
+              existing.sharedOwners = [{ ownerUID: existing.ownerUID, libraryName: existing.libraryName }];
+            }
+            existing.sharedOwners.push({ ownerUID: gData.ownerUID, libraryName: gData.libraryName });
+          } else {
+            gameMap.set(objectId, gData);
+          }
+          
+      });
     }
-
-    // 3) Flatten each game doc for each owner
-    //    So if a game has 2 owners, we create 2 output items
-    const output = [];
-    allGameDocs.forEach(gameDoc => {
-        const ownersArray = gameDoc.owners || [];
-        ownersArray.forEach(uid => {
-            // Build a single object with the shape your display code expects
-            output.push({
-                owner: userMap[uid],          // e.g. "Alice's Library"
-                name: gameDoc.name,
-                objectId: gameDoc.objectId,
-                thumbnail: gameDoc.thumbnail,
-                newGame: gameDoc.newGame || "",
-                status: Array.isArray(gameDoc.status) ? gameDoc.status : []
-            });
-        });
-    });
-
-    return output;
-}
+    // Return as an array
+    return Array.from(gameMap.values());
+}  
 
 function fetchGameDetails(gameId) {
     const detailsUrl = `https://boardgamegeek.com/xmlapi2/thing?id=${gameId}&versions=1`;
@@ -608,10 +487,8 @@ function fetchGameDetails(gameId) {
         .catch(error => console.error('Error fetching game details:', error));
 }
 
-async function searchGames(button) {
+function searchGames(button) {
     if (!isLoggedIn()) return;
-    const hasAccess = await hasLibrary(); // Wait for the result
-    if (!hasAccess) return;
 
     var query = document.getElementById('bggSearchQuery').value;
     var searchUrl = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(query)}&type=boardgame`;
@@ -667,6 +544,442 @@ function displaySearchResults(data, button) {
 }
 
 async function displayGamesTab() {
+    if (!isLoggedIn()) return;
+
+    showLoadingOverlay();
+
+    try {
+        // Fetch all games from every user's top-level collection.
+        const allGames = await fetchAllGames();
+        const userUID = auth.currentUser ? auth.currentUser.uid : null;
+        var gamesDiv = document.getElementById('Games');
+        gamesDiv.innerHTML = '<h1>Make Your Selections</h1>'; // Clear previous content and add title
+
+        // Create checkbox for toggling visibility (same as before)
+        var checkboxDiv = document.createElement('div');
+        checkboxDiv.className = 'checkbox-container';
+        var checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = 'showSelected';
+        checkbox.className = 'large-checkbox';
+        checkbox.checked = false;
+        var label = document.createElement('label');
+        label.htmlFor = 'showSelected';
+        label.textContent = ' Only show selected games';
+
+        checkboxDiv.appendChild(checkbox);
+        checkboxDiv.appendChild(label);
+        gamesDiv.appendChild(checkboxDiv);
+
+        // Separate shared games from individual ones.
+        let sharedGames = allGames.filter(game => game.sharedOwners && game.sharedOwners.length > 1);
+        let individualGames = allGames.filter(game => !game.sharedOwners || game.sharedOwners.length < 2);
+
+        // --- Render the Shared Library ---
+        if (sharedGames.length > 0) {
+            // Sort shared games
+            sharedGames.sort((a, b) => {
+                // If a is new and b is not, a comes first.
+                if (a.newGame === "Y" && b.newGame !== "Y") return -1;
+                // If b is new and a is not, b comes first.
+                if (a.newGame !== "Y" && b.newGame === "Y") return 1;
+                // Otherwise, sort alphabetically by name.
+                return a.name.localeCompare(b.name);
+              });              
+            
+            // Create a container for the shared library (collapsed by default)
+            var sharedOwnerDiv = document.createElement('div');
+            sharedOwnerDiv.className = 'owner-games';
+            sharedOwnerDiv.style.display = 'none';  // Collapsed by default
+        
+            // Create a header for the shared library
+            var sharedHeader = document.createElement('h2');
+            sharedHeader.innerHTML = "Shared Library";
+            sharedHeader.className = 'owner-header';
+            sharedHeader.onclick = createOwnerHeaderClickHandler(sharedHeader, sharedOwnerDiv);
+        
+            // Append the header to the main container (gamesDiv)
+            gamesDiv.appendChild(sharedHeader);
+        
+            // Create a single row container for the shared library games
+            var sharedRowDiv = document.createElement('div');
+            sharedRowDiv.className = 'result-row';
+        
+            // Append the row container to the sharedOwnerDiv
+            sharedOwnerDiv.appendChild(sharedRowDiv);
+        
+            // Append the sharedOwnerDiv to the main container (gamesDiv)
+            gamesDiv.appendChild(sharedOwnerDiv);
+
+            sharedGames.forEach(game => {
+                // Create the game element (similar to below)
+                var resultDiv = document.createElement('div');
+                resultDiv.className = 'result-item';
+                
+                // (Set the background color based on status as before)
+                let statusArray = Array.isArray(game.status) ? game.status : [];
+                if (userUID && statusArray.includes(userUID)) {
+                    resultDiv.style.backgroundColor = "darkgreen"; // Current user selected
+                } else if (statusArray.length > 0) {
+                    resultDiv.style.backgroundColor = "lightgreen";
+                } else {
+                    resultDiv.style.backgroundColor = "";
+                }
+                resultDiv.dataset.status = statusArray;
+                
+                // Build thumbnail and name elements
+                var thumbnailImg = document.createElement('img');
+                thumbnailImg.src = game.thumbnail;
+                thumbnailImg.alt = game.name;
+                thumbnailImg.className = 'thumbnail-img';
+
+                var nameDiv = document.createElement('div');
+                nameDiv.innerHTML = game.name;
+                nameDiv.className = 'game-name';
+
+                if (game.newGame === "Y") {
+                    // Create a "New Game" indicator
+                    const newGameIndicator = document.createElement('img');
+                    newGameIndicator.src = './new.png'; // Path to the "new game" icon
+                    newGameIndicator.alt = 'New Game';
+                    newGameIndicator.style = `
+                        position: absolute; 
+                        top: -10px; 
+                        left: -10px; 
+                        width: 40px; 
+                        height: 40px; 
+                    `;
+                
+                    // Append the "New Game" indicator to the resultDiv
+                    resultDiv.appendChild(newGameIndicator);
+                }
+    
+                // Create overlays but keep them hidden initially
+                var websiteOverlay = document.createElement('div');
+                websiteOverlay.style = 'position: absolute; top: 0; left: 0; width: 100%; height: 50%; background-color: rgba(255, 0, 0, 0.5); color: white; display: flex; justify-content: center; align-items: center; display: none; border-top-left-radius: 1rem; border-top-right-radius: 1rem; text-shadow: 2px 2px 4px #000000;';
+                var websiteText = document.createElement('span');
+                websiteText.textContent = 'View On BGG';
+                websiteText.style = `background-color: rgba(0, 0, 0, 0.5); padding: 0.5rem 1rem; border-radius: 0.5rem;`;
+                websiteOverlay.appendChild(websiteText);
+                websiteOverlay.onclick = function(event) {
+                    window.open(`https://boardgamegeek.com/boardgame/${game.objectId}`, '_blank');
+                    hideOverlays(websiteOverlay, addActionOverlay);
+                    // Re-enable showing overlays on click
+                    resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
+                    event.stopPropagation(); // Prevent triggering clicks on underlying elements
+                };
+    
+                var addActionOverlay = document.createElement('div');
+                addActionOverlay.style = `
+                    position: absolute; 
+                    bottom: 0; 
+                    right: 0; 
+                    width: 100%; 
+                    height: 50%; 
+                    background-color: rgba(0, 255, 0, 0.5); 
+                    color: white; 
+                    display: flex; 
+                    justify-content: center; 
+                    align-items: center; 
+                    display: none;
+                    border-bottom-left-radius: 1rem; 
+                    border-bottom-right-radius: 1rem; 
+                    text-shadow: 2px 2px 4px #000000;
+                `;
+                
+                // Create an image element for the "Add/Remove" icon
+                var addActionImage = document.createElement('img');
+                addActionImage.src = './thumbUp.png'; // Path to the image
+                addActionImage.alt = 'Add/Remove';
+                addActionImage.style = `
+                    width: 90px; 
+                    height: 90px; 
+                `;
+                
+                // Append the image to the overlay
+                addActionOverlay.appendChild(addActionImage);
+    
+                // Update the color of the image based on data-status
+                function updateThumbColor() {
+                    const status = resultDiv.dataset.status || "";
+                    const hasUsers = status.trim() !== ""; // Check if there are any users in data-status
+                    addActionImage.style.filter = hasUsers ? "none" : "grayscale(100%)"; // Gray if no users
+                }
+                
+                // Call updateThumbColor initially and on data-status changes
+                updateThumbColor();
+    
+                var userCountIndicator = document.createElement('div');
+                userCountIndicator.style = `
+                    position: absolute; 
+                    top: 0px; 
+                    right: 0px; 
+                    width: 32px; 
+                    height: 32px; 
+                    border-radius: 16px; 
+                    background-color: rgba(0, 0, 0, 0.5); 
+                    color: white; 
+                    display: flex; 
+                    justify-content: center; 
+                    align-items: center; 
+                    font-weight: bold;
+                    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.5);
+                `;
+                
+                // Append the indicator to the resultDiv
+                resultDiv.appendChild(userCountIndicator);
+                
+                // Initial update of the user count
+                updateUserCount(game.status || [], userCountIndicator);
+                
+                // Click handler for the overlay
+                addActionOverlay.onclick = function(event) {
+                    createGameClickHandler(game, resultDiv, userCountIndicator)();
+                    hideOverlays(websiteOverlay, addActionOverlay);
+                    updateThumbColor();
+                    //updateUserCount(game.status || []);
+                    // Re-enable showing overlays on click
+                    resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
+                    event.stopPropagation(); // Prevent triggering clicks on underlying elements
+                };
+    
+                resultDiv.style.position = 'relative';
+                resultDiv.appendChild(websiteOverlay);
+                resultDiv.appendChild(addActionOverlay);
+    
+                // Initial click on the game item shows the overlays
+                resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
+
+                // Here we manually append thumbnail and name:
+                resultDiv.appendChild(thumbnailImg);
+                resultDiv.appendChild(nameDiv);
+                
+                sharedRowDiv.appendChild(resultDiv);
+            });
+        }
+
+        // --- Render Individual Libraries ---
+        // Sort individual games by owner (libraryName), then newGame, then name.
+        individualGames.sort((a, b) => {
+            if (a.libraryName !== b.libraryName) {
+                return a.libraryName.localeCompare(b.libraryName);
+            }
+            if (a.newGame === "Y" && b.newGame !== "Y") return -1;
+            if (a.newGame !== "Y" && b.newGame === "Y") return 1;
+            return a.name.localeCompare(b.name);
+        });
+
+        var currentOwner = null;
+        var ownerDiv;
+        var rowDiv;
+
+        individualGames.forEach(game => {
+            if (game.libraryName !== currentOwner) {
+                currentOwner = game.libraryName;
+                ownerDiv = document.createElement('div');
+                ownerDiv.className = 'owner-games';
+                ownerDiv.style.display = 'none';
+
+                var ownerHeader = document.createElement('h2');
+                ownerHeader.innerHTML = currentOwner;
+                ownerHeader.className = 'owner-header';
+                ownerHeader.onclick = createOwnerHeaderClickHandler(ownerHeader, ownerDiv);
+
+                gamesDiv.appendChild(ownerHeader);
+
+                rowDiv = document.createElement('div');
+                rowDiv.className = 'result-row';
+                ownerDiv.appendChild(rowDiv);
+
+                gamesDiv.appendChild(ownerDiv);
+            }
+
+            var resultDiv = document.createElement('div');
+            resultDiv.className = 'result-item';
+
+            let statusArray = Array.isArray(game.status) ? game.status : [];
+            if (userUID && statusArray.includes(userUID)) {
+                resultDiv.style.backgroundColor = "darkgreen";
+            } else if (statusArray.length > 0) {
+                resultDiv.style.backgroundColor = "lightgreen";
+            } else {
+                resultDiv.style.backgroundColor = "";
+            }
+            resultDiv.dataset.status = statusArray;
+
+            var thumbnailImg = document.createElement('img');
+            thumbnailImg.src = game.thumbnail;
+            thumbnailImg.alt = game.name;
+            thumbnailImg.className = 'thumbnail-img';
+
+            var nameDiv = document.createElement('div');
+            nameDiv.innerHTML = game.name;
+            nameDiv.className = 'game-name';
+
+            if (game.newGame === "Y") {
+                const newGameIndicator = document.createElement('img');
+                newGameIndicator.src = './new.png';
+                newGameIndicator.alt = 'New Game';
+                newGameIndicator.style = `
+                    position: absolute; 
+                    top: -10px; 
+                    left: -10px; 
+                    width: 40px; 
+                    height: 40px;
+                `;
+                resultDiv.appendChild(newGameIndicator);
+            }
+
+            
+            
+
+
+            if (game.newGame === "Y") {
+                // Create a "New Game" indicator
+                const newGameIndicator = document.createElement('img');
+                newGameIndicator.src = './new.png'; // Path to the "new game" icon
+                newGameIndicator.alt = 'New Game';
+                newGameIndicator.style = `
+                    position: absolute; 
+                    top: -10px; 
+                    left: -10px; 
+                    width: 40px; 
+                    height: 40px; 
+                `;
+            
+                // Append the "New Game" indicator to the resultDiv
+                resultDiv.appendChild(newGameIndicator);
+            }
+
+            // Create overlays but keep them hidden initially
+            var websiteOverlay = document.createElement('div');
+            websiteOverlay.style = 'position: absolute; top: 0; left: 0; width: 100%; height: 50%; background-color: rgba(255, 0, 0, 0.5); color: white; display: flex; justify-content: center; align-items: center; display: none; border-top-left-radius: 1rem; border-top-right-radius: 1rem; text-shadow: 2px 2px 4px #000000;';
+            var websiteText = document.createElement('span');
+            websiteText.textContent = 'View On BGG';
+            websiteText.style = `background-color: rgba(0, 0, 0, 0.5); padding: 0.5rem 1rem; border-radius: 0.5rem;`;
+            websiteOverlay.appendChild(websiteText);
+            websiteOverlay.onclick = function(event) {
+                window.open(`https://boardgamegeek.com/boardgame/${game.objectId}`, '_blank');
+                hideOverlays(websiteOverlay, addActionOverlay);
+                // Re-enable showing overlays on click
+                resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
+                event.stopPropagation(); // Prevent triggering clicks on underlying elements
+            };
+
+            var addActionOverlay = document.createElement('div');
+            addActionOverlay.style = `
+                position: absolute; 
+                bottom: 0; 
+                right: 0; 
+                width: 100%; 
+                height: 50%; 
+                background-color: rgba(0, 255, 0, 0.5); 
+                color: white; 
+                display: flex; 
+                justify-content: center; 
+                align-items: center; 
+                display: none;
+                border-bottom-left-radius: 1rem; 
+                border-bottom-right-radius: 1rem; 
+                text-shadow: 2px 2px 4px #000000;
+            `;
+            
+            // Create an image element for the "Add/Remove" icon
+            var addActionImage = document.createElement('img');
+            addActionImage.src = './thumbUp.png'; // Path to the image
+            addActionImage.alt = 'Add/Remove';
+            addActionImage.style = `
+                width: 90px; 
+                height: 90px; 
+            `;
+            
+            // Append the image to the overlay
+            addActionOverlay.appendChild(addActionImage);
+
+            // Update the color of the image based on data-status
+            function updateThumbColor() {
+                const status = resultDiv.dataset.status || "";
+                const hasUsers = status.trim() !== ""; // Check if there are any users in data-status
+                addActionImage.style.filter = hasUsers ? "none" : "grayscale(100%)"; // Gray if no users
+            }
+            
+            // Call updateThumbColor initially and on data-status changes
+            updateThumbColor();
+
+            var userCountIndicator = document.createElement('div');
+            userCountIndicator.style = `
+                position: absolute; 
+                top: 0px; 
+                right: 0px; 
+                width: 32px; 
+                height: 32px; 
+                border-radius: 16px; 
+                background-color: rgba(0, 0, 0, 0.5); 
+                color: white; 
+                display: flex; 
+                justify-content: center; 
+                align-items: center; 
+                font-weight: bold;
+                box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.5);
+            `;
+            
+            // Append the indicator to the resultDiv
+            resultDiv.appendChild(userCountIndicator);
+            
+            // Initial update of the user count
+            updateUserCount(game.status || [], userCountIndicator);
+            
+            // Click handler for the overlay
+            addActionOverlay.onclick = function(event) {
+                createGameClickHandler(game, resultDiv, userCountIndicator)();
+                hideOverlays(websiteOverlay, addActionOverlay);
+                updateThumbColor();
+                //updateUserCount(game.status || []);
+                // Re-enable showing overlays on click
+                resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
+                event.stopPropagation(); // Prevent triggering clicks on underlying elements
+            };
+
+            resultDiv.style.position = 'relative';
+            resultDiv.appendChild(websiteOverlay);
+            resultDiv.appendChild(addActionOverlay);
+
+            // Initial click on the game item shows the overlays
+            resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
+
+
+
+
+
+            resultDiv.appendChild(thumbnailImg);
+            resultDiv.appendChild(nameDiv);
+
+            rowDiv.appendChild(resultDiv);
+        });
+
+        hideLoadingOverlay();
+
+        checkbox.addEventListener('change', function() {
+            const allGameItems = document.querySelectorAll('.result-item');
+            allGameItems.forEach(item => {
+                const hasUsers = item.dataset.status && item.dataset.status.trim() !== "";
+                if (this.checked) {
+                    if (!hasUsers) {
+                        item.style.display = 'none';
+                    }
+                } else {
+                    item.style.display = '';
+                }
+            });
+        });
+    } catch (error) {
+        console.error("Error fetching all games from Firestore:", error);
+        alert("Failed to load games. Please try again later.");
+        hideLoadingOverlay();
+    }
+}
+
+async function olddisplayGamesTab() {
     if (!isLoggedIn()) return;
 
     showLoadingOverlay();
@@ -949,10 +1262,8 @@ function hideCurrentActiveOverlays() {
     };
 }
 
-async function searchLibrary(button) {
+function searchLibrary(button) {
     if (!isLoggedIn()) return;
-    const hasAccess = await hasLibrary(); // Wait for the result
-    if (!hasAccess) return;
 
     showLoadingOverlay(); // Show the overlay before starting the fetch
     document.getElementById('libraryResults').innerHTML = '';
@@ -1006,8 +1317,12 @@ async function searchLibrary(button) {
 }
 
 function toggleOwnerGames(ownerDiv) {
-    // Toggle showing or hiding the list of games for the owner
-    ownerDiv.style.display = ownerDiv.style.display === 'none' ? 'block' : 'none';
+    // Use a robust check for empty string or 'none'
+    if (!ownerDiv.style.display || ownerDiv.style.display === 'none') {
+      ownerDiv.style.display = 'block';
+    } else {
+      ownerDiv.style.display = 'none';
+    }
 }
 
 function createClickHandler(name, objectId, thumbnailImg, status, newGame, resultDiv) {
@@ -1065,7 +1380,7 @@ function createRemoveClickHandler(game, resultDiv) {
     if (!isLoggedIn()) return;
     
     return function() {
-        removeGame(game.objectId);
+        removeGame(game);
 
         // Apply CSS animation
         resultDiv.style.backgroundColor = 'red';
@@ -1145,9 +1460,22 @@ function createOwnerHeaderClickHandler(ownerHeader, ownerDiv) {
     };
 }
 
+function sanitizeDocName(nameString) {
+  return nameString
+    .replace(/\//g, "-")
+    .replace(/\./g, "-")
+    .replace(/#/g, "-")
+    .replace(/\$/g, "-")
+    .replace(/\[/g, "-")
+    .replace(/\]/g, "-")
+    .replace(/\s+/g, "_")
+    .trim();
+}
+
 async function updateGame(game, action) {
     const userUID = auth.currentUser.uid;
-    const docRef = doc(db, "games", String(game.objectId));
+    const docName = sanitizeDocName(game.name) + "_" + game.objectId;
+    const docRef = doc(db, game.ownerUID, docName);
 
     if (action === "add") {
         await updateDoc(docRef, {
@@ -1160,58 +1488,35 @@ async function updateGame(game, action) {
     }
     console.log(`Game status updated in Firestore for ${game.name}: ${action}`);
 }
-
+  
 // Simplified: no "first-time" check in here
 async function addGame(game) {
     const userUID = auth.currentUser.uid;
-    const docRef = doc(db, "games", String(game.objectId));
-    const docSnap = await getDoc(docRef);
+    const docName = sanitizeDocName(game.name) + "_" + game.objectId;
+    const docRef = doc(db, userUID, docName);
 
-    if (!docSnap.exists()) {
-        // create brand new doc
-        await setDoc(docRef, {
-        objectId: game.objectId,
-        name: game.name,
-        thumbnail: game.thumbnail,
-        newGame: game.newGame,
-        status: Array.isArray(game.status) ? game.status : [],
-        owners: [userUID]
-        });
-        console.log(`Created new doc: ${game.name} (${game.objectId})`);
-    } else {
-        // doc exists, arrayUnion user to owners
-        await updateDoc(docRef, {
-        owners: arrayUnion(userUID)
-        });
-        console.log(`Added owner ${userUID} to: ${game.name} (${game.objectId})`);
-    }
-}  
-
-async function removeGame(objectId) {
-    const userUID = auth.currentUser.uid;
-    const docRef = doc(db, "games", String(objectId));
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
-        console.warn(`Doc for objectId ${objectId} does not exist.`);
-        return;
-    }
-
-    // Remove the user from owners
-    await updateDoc(docRef, {
-        owners: arrayRemove(userUID)
+    await setDoc(docRef, {
+	    name: game.name,
+	    objectId: game.objectId,
+	    thumbnail: game.thumbnail,
+	    newGame: game.newGame || "N",
+	    status: []
     });
 
-    // Check if owners is now empty
-    const updatedSnap = await getDoc(docRef);
-    const updatedOwners = updatedSnap.data().owners || [];
-    if (updatedOwners.length === 0) {
-        // Optional: delete the document entirely if no owners remain
-        await deleteDoc(docRef);
-        console.log(`Deleted doc for objectId ${objectId}, as no owners remain.`);
-    } else {
-        console.log(`Removed UID ${userUID} from owners for objectId ${objectId}.`);
-    }
+    console.log(`Created/updated doc in top-level collection ${userUID}: ${docName}`);
+}
+
+async function removeGame(game) {
+  const userUID = auth.currentUser.uid;
+  const docName = sanitizeDocName(game.name) + "_" + game.objectId;
+  const docRef = doc(db, userUID, docName);
+
+  try {
+    await deleteDoc(docRef);
+    console.log(`Deleted doc '${docName}' from collection '${userUID}'`);
+  } catch (error) {
+    console.error(`Error deleting doc ${docName} in collection ${userUID}:`, error);
+  }
 }
 
 function showLoadingOverlay() {
