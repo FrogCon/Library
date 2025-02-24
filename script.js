@@ -211,13 +211,12 @@ submitSignUpButton.addEventListener("click", () => {
 const NEW_UID = "PNV486SZnWMloMY4KUG8Az3rhYR2";
 
 async function admin() {
-    // Ensure the user is logged in
+    // 1) Ensure the user is logged in
     if (!isLoggedIn()) return;
-    
+
+    // 2) Verify current user has an admin role
     const currentUser = auth.currentUser;
     if (!currentUser) return;
-    
-    // Check admin privileges using the "users" collection
     try {
         const userDocRef = doc(db, "users", currentUser.uid);
         const userDoc = await getDoc(userDocRef);
@@ -230,37 +229,58 @@ async function admin() {
         alert("Error checking user role. Please try again later.");
         return;
     }
-    
-    // Confirm the action with the admin
-    if (!confirm("Are you sure you want to update the database?")) {
+
+    // 3) Confirm the action with the admin
+    if (!confirm("Are you sure you want to create new top-level collections for each owner’s UID, doc-named by `name`?")) {
         return;
     }
 
     try {
-        // Query all documents in the "games" collection where the owners array contains "Katie"
+        // 4) Fetch every game from the main "games" collection
         const gamesRef = collection(db, "games");
-        const q = query(gamesRef, where("owners", "array-contains", "Daniel"));
-        const querySnapshot = await getDocs(q);
-        let updatedCount = 0;
+        const querySnapshot = await getDocs(gamesRef);
 
+        let totalCreated = 0;
+
+        // 5) For each game doc in "games"
         for (const docSnap of querySnapshot.docs) {
             const data = docSnap.data();
-            const owners = data.owners || [];
-            // Replace every "Katie" with the new UID while leaving other owners intact
-            let newOwners = owners.map(owner => owner === "Daniel" ? NEW_UID : owner);
-            // Deduplicate the array in case the new UID already exists elsewhere
-            newOwners = [...new Set(newOwners)];
+            const ownersArray = data.owners || [];
 
-            // Only update if there's a change
-            if (JSON.stringify(newOwners) !== JSON.stringify(owners)) {
-                await updateDoc(doc(db, "games", docSnap.id), { owners: newOwners });
-                updatedCount++;
+            // If `owners` is empty or missing, skip
+            if (!ownersArray.length) continue;
+
+            // Remove the `owners` field, keep the rest
+            const { owners, ...newDocData } = data;
+
+            // 6) For each owner, create a doc in a new top-level collection
+            //    named exactly that UID, with the doc ID = the game’s `name` (sanitized)
+            for (const ownerUID of ownersArray) {
+                const ownerCollection = collection(db, ownerUID);
+
+                // Basic sanitizing for the Firestore doc ID
+                let docName = (newDocData.name || "Untitled") + "_" + newDocData.objectId;
+                    .replace(/\//g, "-")
+                    .replace(/\./g, "-")
+                    .replace(/#/g, "-")
+                    .replace(/\$/g, "-")
+                    .replace(/\[/g, "-")
+                    .replace(/\]/g, "-")
+                    .replace(/\s+/g, "_")
+                    .trim();
+                
+                const ownerDocRef = doc(ownerCollection, docName);
+
+                // Write/overwrite this doc in the new top-level collection
+                await setDoc(ownerDocRef, newDocData);
+                totalCreated++;
             }
         }
-        alert(`Updated ${updatedCount} document(s).`);
+
+        alert(`Done! Created/updated a total of ${totalCreated} documents in new top-level UID collections, named by "name".`);
     } catch (error) {
-        console.error("Error updating documents:", error);
-        alert("Error updating documents: " + error.message);
+        console.error("Error restructuring documents:", error);
+        alert("Error restructuring documents: " + error.message);
     }
 }
 
