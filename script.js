@@ -208,7 +208,7 @@ submitSignUpButton.addEventListener("click", () => {
     document.getElementById("confirmPassword").value = "";
 });
 
-const NEW_UID = "UQp9gQRfPSfSEEKYYm8BRwYfj202";
+const NEW_UID = "PNV486SZnWMloMY4KUG8Az3rhYR2";
 
 async function admin() {
     // Ensure the user is logged in
@@ -239,7 +239,7 @@ async function admin() {
     try {
         // Query all documents in the "games" collection where the owners array contains "Katie"
         const gamesRef = collection(db, "games");
-        const q = query(gamesRef, where("owners", "array-contains", "Katie"));
+        const q = query(gamesRef, where("owners", "array-contains", "Daniel"));
         const querySnapshot = await getDocs(q);
         let updatedCount = 0;
 
@@ -247,7 +247,7 @@ async function admin() {
             const data = docSnap.data();
             const owners = data.owners || [];
             // Replace every "Katie" with the new UID while leaving other owners intact
-            let newOwners = owners.map(owner => owner === "Katie" ? NEW_UID : owner);
+            let newOwners = owners.map(owner => owner === "Daniel" ? NEW_UID : owner);
             // Deduplicate the array in case the new UID already exists elsewhere
             newOwners = [...new Set(newOwners)];
 
