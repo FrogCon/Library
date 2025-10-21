@@ -728,6 +728,15 @@ async function displayGamesTab() {
                 
                 // Append the indicator to the resultDiv
                 resultDiv.appendChild(userCountIndicator);
+
+                userCountIndicator.addEventListener("click", (event) => {
+                    event.stopPropagation(); // Don’t trigger other click events
+                    if (Array.isArray(game.status) && game.status.length > 0) {
+                        showUserList(game.status);
+                    } else {
+                        alert("No users have selected this game yet.");
+                    }
+                });
                 
                 // Initial update of the user count
                 updateUserCount(game.status || [], userCountIndicator);
@@ -925,6 +934,15 @@ async function displayGamesTab() {
             
             // Append the indicator to the resultDiv
             resultDiv.appendChild(userCountIndicator);
+
+            userCountIndicator.addEventListener("click", (event) => {
+                event.stopPropagation(); // Don’t trigger the game’s overlay click
+                if (Array.isArray(game.status) && game.status.length > 0) {
+                    showUserList(game.status);
+                } else {
+                    alert("No users have selected this game yet.");
+                }
+            });
             
             // Initial update of the user count
             updateUserCount(game.status || [], userCountIndicator);
@@ -1525,4 +1543,51 @@ function showLoadingOverlay() {
 
 function hideLoadingOverlay() {
     document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+// === User List Modal Logic ===
+const userListModal = document.getElementById("userListModal");
+const closeUserListModal = document.getElementById("closeUserListModal");
+const userListElement = document.getElementById("userList");
+
+closeUserListModal.addEventListener("click", () => {
+  userListModal.style.display = "none";
+  userListElement.innerHTML = "";
+});
+
+window.addEventListener("click", (event) => {
+  if (event.target === userListModal) {
+    userListModal.style.display = "none";
+    userListElement.innerHTML = "";
+  }
+});
+
+// Fetch and display library names for a given array of user UIDs
+async function showUserList(statusArray) {
+  userListElement.innerHTML = "<li>Loading...</li>";
+
+  const libraryNames = [];
+
+  for (const uid of statusArray) {
+    try {
+      const userDoc = await getDoc(doc(db, "users", uid));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        libraryNames.push(data.libraryName || "(Unnamed Library)");
+      } else {
+        libraryNames.push("(Unknown User)");
+      }
+    } catch (error) {
+      console.error("Error fetching user info:", error);
+      libraryNames.push("(Error Loading User)");
+    }
+  }
+
+  if (libraryNames.length === 0) {
+    userListElement.innerHTML = "<li>No one has selected this game yet.</li>";
+  } else {
+    userListElement.innerHTML = libraryNames.map(name => `<li>${name}</li>`).join("");
+  }
+
+  userListModal.style.display = "block";
 }
