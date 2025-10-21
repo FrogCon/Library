@@ -724,15 +724,18 @@ async function displayGamesTab() {
                     align-items: center; 
                     font-weight: bold;
                     box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.5);
+                    cursor: pointer;
+                    z-index: 10;
                 `;
                 
                 // Append the indicator to the resultDiv
                 resultDiv.appendChild(userCountIndicator);
 
-                userCountIndicator.addEventListener("click", (event) => {
-                    event.stopPropagation(); // Don’t trigger other click events
-                    if (Array.isArray(game.status) && game.status.length > 0) {
-                        showUserList(game.status);
+                userCountIndicator.addEventListener("click", async (event) => {
+                    event.stopPropagation(); // Stop the click from reaching the resultDiv overlay logic
+                    const selectedUsers = Array.isArray(game.status) ? game.status : [];
+                    if (selectedUsers.length > 0) {
+                        await showUserList(selectedUsers);
                     } else {
                         alert("No users have selected this game yet.");
                     }
@@ -930,15 +933,18 @@ async function displayGamesTab() {
                 align-items: center; 
                 font-weight: bold;
                 box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.5);
+                cursor: pointer;
+                z-index: 10;
             `;
             
             // Append the indicator to the resultDiv
             resultDiv.appendChild(userCountIndicator);
 
-            userCountIndicator.addEventListener("click", (event) => {
-                event.stopPropagation(); // Don’t trigger the game’s overlay click
-                if (Array.isArray(game.status) && game.status.length > 0) {
-                    showUserList(game.status);
+            userCountIndicator.addEventListener("click", async (event) => {
+                event.stopPropagation(); // Stop the click from reaching the resultDiv overlay logic
+                const selectedUsers = Array.isArray(game.status) ? game.status : [];
+                if (selectedUsers.length > 0) {
+                    await showUserList(selectedUsers);
                 } else {
                     alert("No users have selected this game yet.");
                 }
