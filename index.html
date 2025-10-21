@@ -66,7 +66,7 @@
             .modal {
                 display: none; /* Hidden by default */
                 position: fixed;
-                z-index: 1;
+                z-index: 10;
                 left: 0;
                 top: 0;
                 width: 100%;
@@ -344,7 +344,7 @@
             </div>
         </div>
         
-        <div id="loadingOverlay" style="display: none; position: fixed; width: 100%; height: 100%; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.5); z-index: 2; cursor: pointer;">
+        <div id="loadingOverlay" style="display: none; position: fixed; width: 100%; height: 100%; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.5); z-index: 20; cursor: pointer;">
             <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 2em; color: white;">
                 Loading...
             </div>
@@ -451,7 +451,7 @@
         <div id="userListModal" class="modal">
             <div class="modal-content">
                 <span id="closeUserListModal" class="close">&times;</span>
-                <h2>Users Who Selected This Game</h2>
+                <h2>Selected By:</h2>
                 <ul id="userList"></ul>
             </div>
         </div>
