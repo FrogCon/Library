@@ -271,41 +271,35 @@ function getCollection() {
     
     if (username) {
         statusDiv.innerHTML = 'Fetching Collection...';
-        fetch(`https://us-central1-frogcon-a9770.cloudfunctions.net/bggProxy?type=collection&username=${encodeURIComponent(username)}`)
-        .then(response => {
-            if (!response.ok) throw new Error('Network response was not ok');
-            return response.text();
-        })
-        .then(str => {
-            // 1. Check if the "Success" is actually BGG telling us to wait
-            if (str.includes("Your request for this collection has been accepted")) {
-                statusDiv.innerHTML = 'BGG is still preparing your games... retrying in 10s';
-                console.log("BGG processing message received. Retrying...");
-                
-                // Retry automatically in 10 seconds
-                setTimeout(() => getCollection(), 10000);
-                return; 
-            }
-
-            // 2. Otherwise, parse the XML as normal
-            const data = (new window.DOMParser()).parseFromString(str, "text/xml");
-            
-            // 3. Double check if there are actually items in the XML
-            if (data.getElementsByTagName("item").length === 0) {
-                statusDiv.innerHTML = 'Collection empty or still loading... retrying in 10s';
-                setTimeout(() => getCollection(), 10000);
-                return;
-            }
-
-            // 4. If we have games, proceed!
-            globalXmlData = data;
-            statusDiv.innerHTML = 'Games found! Preparing list...';
-            prepareData(data);
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            statusDiv.innerHTML = 'Error fetching collection. Please try again.';
-        });
+        fetch(`https://boardgamegeek.com/xmlapi2/collection?username=${encodeURIComponent(username)}&own=1&version=1`)
+            .then(response => {
+                if (response.status === 202) {
+                    // Request is queued, show retry message and retry after some delay
+                    statusDiv.innerHTML = 'Shelving Games. Please Wait...';
+                    setTimeout(() => getCollection(), 10000); // Retry after 10 seconds
+                } else if (response.ok) {
+                    return response.text();
+                } else {
+                    statusDiv.innerHTML = '';
+                    throw new Error('Network response was not ok.');
+                }
+            })
+            .then(str => {
+                if (str) {
+                    return (new window.DOMParser()).parseFromString(str, "text/xml");
+                }
+            })
+            .then(data => {
+                if (data) {
+                    globalXmlData = data;
+                    prepareData(data);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert ('An error occurred. Please try again.');
+                statusDiv.innerHTML = '';
+            });
     } else {
         if (!username) {
             alert ('Please Enter A Username.');
@@ -470,7 +464,9 @@ async function fetchAllGames() {
 }  
 
 function fetchGameDetails(gameId) {
-    fetch(`https://us-central1-frogcon-a9770.cloudfunctions.net/bggProxy?type=thing&id=${gameId}`)
+    const detailsUrl = `https://boardgamegeek.com/xmlapi2/thing?id=${gameId}&versions=1`;
+
+    fetch(detailsUrl)
         .then(response => response.text())
         .then(str => (new window.DOMParser()).parseFromString(str, "text/xml"))
         .then(data => {
@@ -495,7 +491,9 @@ function searchGames(button) {
     if (!isLoggedIn()) return;
 
     var query = document.getElementById('bggSearchQuery').value;
-    fetch(`https://us-central1-frogcon-a9770.cloudfunctions.net/bggProxy?type=search&query=${encodeURIComponent(query)}`)
+    var searchUrl = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(query)}&type=boardgame`;
+
+    fetch(searchUrl)
         .then(response => response.text())
         .then(str => (new window.DOMParser()).parseFromString(str, "text/xml"))
         .then(data => displaySearchResults(data, button));
