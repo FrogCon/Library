@@ -94,10 +94,19 @@ exports.bggProxy = onRequest({
             const xml = await fetchWithRetry(url);
 
             // 3. Save to Cache
-            await cacheRef.set({ xml, timestamp: Date.now() });
+            // ONLY store in cache if it's NOT the "Accepted" message
+            if (!xml.includes("Your request for this collection has been accepted")) {
+                console.log("Valid data received. Saving to Firestore cache.");
+                await cacheRef.set({
+                    xml: xml,
+                    timestamp: Date.now()
+                });
+            } else {
+                console.log("Still a 202 message. Skipping cache so we can try again later.");
+            }
 
             res.set("Content-Type", "text/xml");
-            return res.send(xml);
+            res.send(xml);
 
         } catch (err) {
             console.error("Final Function Error:", err);
