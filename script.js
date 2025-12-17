@@ -271,7 +271,7 @@ function getCollection() {
     
     if (username) {
         statusDiv.innerHTML = 'Fetching Collection...';
-        fetch(`https://boardgamegeek.com/xmlapi2/collection?username=${encodeURIComponent(username)}&own=1&version=1`)
+        fetch(`https://us-central1-frogcon-a9770.cloudfunctions.net/getBGGCollection?username=${encodeURIComponent(username)}`)
             .then(response => {
                 if (response.status === 202) {
                     // Request is queued, show retry message and retry after some delay
@@ -464,9 +464,7 @@ async function fetchAllGames() {
 }  
 
 function fetchGameDetails(gameId) {
-    const detailsUrl = `https://boardgamegeek.com/xmlapi2/thing?id=${gameId}&versions=1`;
-
-    fetch(detailsUrl)
+    fetch(`https://us-central1-frogcon-a9770.cloudfunctions.net/getBGGGameDetails?id=${gameId}`)
         .then(response => response.text())
         .then(str => (new window.DOMParser()).parseFromString(str, "text/xml"))
         .then(data => {
@@ -491,9 +489,7 @@ function searchGames(button) {
     if (!isLoggedIn()) return;
 
     var query = document.getElementById('bggSearchQuery').value;
-    var searchUrl = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(query)}&type=boardgame`;
-
-    fetch(searchUrl)
+    fetch(`https://us-central1-frogcon-a9770.cloudfunctions.net/searchBGGGames?query=${encodeURIComponent(query)}`)
         .then(response => response.text())
         .then(str => (new window.DOMParser()).parseFromString(str, "text/xml"))
         .then(data => displaySearchResults(data, button));
