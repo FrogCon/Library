@@ -12,20 +12,17 @@ const db = admin.firestore();
 async function fetchWithRetry(url, retries = 5, delay = 10000) {
   for (let i = 0; i < retries; i++) {
     const res = await fetch(url, {
-      headers: {
-        "User-Agent": "FrogCon/1.0 (admin@frogcon)"
-      }
+      headers: { "User-Agent": "FrogCon/1.0" }
     });
 
     if (res.status === 202) {
+      console.log("BGG is busy, waiting 10s...");
       await new Promise(r => setTimeout(r, delay));
       continue;
     }
-
-    return res.text();
+    return res.text(); // Successfully got the data
   }
-
-  throw new Error("BGG request timed out after retries");
+  throw new Error("BGG took too long");
 }
 
 /**
