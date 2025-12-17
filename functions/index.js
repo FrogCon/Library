@@ -87,7 +87,9 @@ exports.bggProxy = functions.https.onRequest((req, res) => {
 
       // 🔹 Fetch from BGG
       // (Assuming fetchWithRetry is defined elsewhere in your file)
-      const xml = await fetchWithRetry(url);
+      const xml = await fetchWithRetry(url).catch(err => {
+          throw new Error("Fetch failed: " + err.message);
+      });
 
       // 🔹 Store cache
       await cacheRef.set({
