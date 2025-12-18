@@ -1,25 +1,44 @@
 import { onRequest } from "firebase-functions/v2/https";
-import fetch from "node-fetch";
 import cors from "cors";
 
 const corsHandler = cors({ origin: true });
 
+/**
+ * Native fetch helper (Node 18+ / 20 / 24)
+ */
 async function fetchBGG(url) {
+  console.log("fetchBGG() using native fetch");
+
   const response = await fetch(url, {
     headers: {
-      "User-Agent": "FrogCon/1.0 (contact: admin@frogcon)"
+      "User-Agent": "FrogCon/1.0 (contact: admin@frogcon)",
+      "Accept": "application/xml,text/xml,*/*"
     }
   });
-  return response.text();
+
+  console.log("BGG HTTP status:", response.status);
+  console.log("BGG content-type:", response.headers.get("content-type"));
+
+  const xml = await response.text();
+
+  console.log("BGG body length:", xml.length);
+
+  return xml;
 }
 
 /**
  * GET /getBGGCollection?username=XXXX
+ * Server-side queue detection (NO frontend changes)
  */
 export const getBGGCollection = onRequest((req, res) => {
   corsHandler(req, res, async () => {
+    console.log("=== getBGGCollection START ===");
+
     const username = req.query.username;
+    console.log("Username:", username);
+
     if (!username) {
+      console.log("ERROR: Missing username");
       return res.status(400).send("Missing username");
     }
 
@@ -28,18 +47,36 @@ export const getBGGCollection = onRequest((req, res) => {
         `https://boardgamegeek.com/xmlapi2/collection` +
         `?username=${encodeURIComponent(username)}&own=1&version=1`;
 
+      console.log("Fetching BGG URL:", url);
+
       const xml = await fetchBGG(url);
 
-      // Detect BGG queue message vs real data
-      const isQueued =
-        xml.includes("<message>") &&
-        !xml.includes("<items");
+      console.log("BGG response length:", xml.length);
+
+      console.log(
+        "BGG response preview:",
+        xml.substring(0, 500).replace(/\n/g, " ")
+      );
+
+      const hasItems = xml.includes("<items");
+      const hasMessage = xml.includes("<message");
+
+      console.log("BGG has <items>:", hasItems);
+      console.log("BGG has <message>:", hasMessage);
+
+      const isQueued = hasMessage && !hasItems;
+
+      console.log("BGG queued:", isQueued);
 
       res.set("Content-Type", "text/xml");
       res.set("X-BGG-Queued", isQueued ? "true" : "false");
+
+      console.log("Sending response back to client");
+      console.log("=== getBGGCollection END ===");
+
       res.send(xml);
     } catch (err) {
-      console.error(err);
+      console.error("ERROR fetching BGG collection:", err);
       res.status(500).send("Failed to fetch collection");
     }
   });
