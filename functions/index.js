@@ -29,7 +29,14 @@ export const getBGGCollection = onRequest((req, res) => {
         `?username=${encodeURIComponent(username)}&own=1&version=1`;
 
       const xml = await fetchBGG(url);
+
+      // Detect BGG queue message vs real data
+      const isQueued =
+        xml.includes("<message>") &&
+        !xml.includes("<items");
+
       res.set("Content-Type", "text/xml");
+      res.set("X-BGG-Queued", isQueued ? "true" : "false");
       res.send(xml);
     } catch (err) {
       console.error(err);

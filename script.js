@@ -270,35 +270,29 @@ function getCollection() {
     var statusDiv = document.getElementById('statusMessage');
     
     if (username) {
-        statusDiv.innerHTML = 'Fetching Collection...';
+        statusDiv.innerHTML = 'Fetching Library...';
         fetch(`https://us-central1-frogcon-a9770.cloudfunctions.net/getBGGCollection?username=${encodeURIComponent(username)}`)
-            .then(response => {
-                if (response.status === 202) {
-                    // Request is queued, show retry message and retry after some delay
-                    statusDiv.innerHTML = 'Shelving Games. Please Wait...';
-                    setTimeout(() => getCollection(), 10000); // Retry after 10 seconds
-                } else if (response.ok) {
-                    return response.text();
-                } else {
-                    statusDiv.innerHTML = '';
-                    throw new Error('Network response was not ok.');
+            .then(async response => {
+                const xmlText = await response.text();
+                const queued = response.headers.get("X-BGG-Queued") === "true";
+
+                if (queued) {
+                statusDiv.innerHTML = "Library found! Request has been queued retrying in 10s...";
+                setTimeout(getCollection, 10000);
+                return null;
                 }
+
+                return xmlText;
             })
             .then(str => {
-                if (str) {
-                    return (new window.DOMParser()).parseFromString(str, "text/xml");
-                }
-            })
-            .then(data => {
-                if (data) {
-                    globalXmlData = data;
-                    prepareData(data);
-                }
+                if (!str) return;
+                const data = new DOMParser().parseFromString(str, "text/xml");
+                prepareData(data);
             })
             .catch(error => {
-                console.error('Error:', error);
-                alert ('An error occurred. Please try again.');
-                statusDiv.innerHTML = '';
+                console.error(error);
+                alert("An error occurred. Please try again.");
+                statusDiv.innerHTML = "";
             });
     } else {
         if (!username) {
@@ -311,6 +305,7 @@ function getCollection() {
 function prepareData(data) {
     const statusDiv = document.getElementById('statusMessage');
     const userUID = auth.currentUser.uid;
+    statusDiv.innerHTML = 'Sorting Library...';
   
     // 1) Build extractedData from BGG XML
     const extractedData = [];
@@ -350,7 +345,7 @@ function prepareData(data) {
     }
   
     // 2) If confirmed, fetch user's Firestore games (via UID)
-    statusDiv.innerHTML = 'Updating Database...';
+    statusDiv.innerHTML = 'Loading Library...';
   
     fetchUserGames().then(async (existingGames) => {
         // existingGames: array of { name, objectId, thumbnail, owners, ... }
