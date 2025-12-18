@@ -263,6 +263,15 @@ document.getElementById("searchLibraryButton").addEventListener("click", () => s
 // Automatically open the default tab on page load
 document.getElementById("homeTab").click();
 
+const BGG_COLLECTION_URL =
+  "https://getbggcollection-qj3gq57tma-uc.a.run.app";
+
+const BGG_SEARCH_URL =
+  "https://searchbgggames-qj3gq57tma-uc.a.run.app";
+
+const BGG_DETAILS_URL =
+  "https://getbgggamedetails-qj3gq57tma-uc.a.run.app";
+
 function getCollection() {
     if (!isLoggedIn()) return;
     
@@ -271,7 +280,7 @@ function getCollection() {
     
     if (username) {
         statusDiv.innerHTML = 'Fetching Library...';
-        fetch(`https://us-central1-frogcon-a9770.cloudfunctions.net/getBGGCollection?username=${encodeURIComponent(username)}`)
+        fetch(`${BGG_COLLECTION_URL}?username=${encodeURIComponent(username)}`)
             .then(async response => {
                 const xmlText = await response.text();
                 const queued = response.headers.get("X-BGG-Queued") === "true";
@@ -459,7 +468,7 @@ async function fetchAllGames() {
 }  
 
 function fetchGameDetails(gameId) {
-    fetch(`https://us-central1-frogcon-a9770.cloudfunctions.net/getBGGGameDetails?id=${gameId}`)
+    fetch(`${BGG_DETAILS_URL}?id=${gameId}`)
         .then(response => response.text())
         .then(str => (new window.DOMParser()).parseFromString(str, "text/xml"))
         .then(data => {
@@ -484,7 +493,7 @@ function searchGames(button) {
     if (!isLoggedIn()) return;
 
     var query = document.getElementById('bggSearchQuery').value;
-    fetch(`https://us-central1-frogcon-a9770.cloudfunctions.net/searchBGGGames?query=${encodeURIComponent(query)}`)
+    fetch(`${BGG_SEARCH_URL}?query=${encodeURIComponent(query)}`)
         .then(response => response.text())
         .then(str => (new window.DOMParser()).parseFromString(str, "text/xml"))
         .then(data => displaySearchResults(data, button));
