@@ -333,23 +333,35 @@
             }
 
             .bgg-footer {
-                margin-top: 40px;
+                position: fixed;       /* Stick to the bottom */
+                bottom: 0;
+                left: 0;
+                width: 100%;           /* Full width */
                 padding: 12px 16px;
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
-                opacity: 0.8;
+                justify-content: center; /* Center image by default */
+                background: rgba(0, 0, 0, 0.7); /* Transparent dark background */
+                color: #fff;
+                z-index: 1000;         /* Ensure it's on top */
+                box-sizing: border-box;
             }
 
             .bgg-footer img {
                 max-width: 180px;
                 height: auto;
+                margin: 0 auto;        /* Center image horizontally */
+                position: absolute;
+                left: 50%;
+                transform: translateX(-50%);
             }
 
             .app-version {
                 font-size: 0.85em;
-                color: #666;
+                color: #ccc;           /* Slightly lighter than background */
                 white-space: nowrap;
+                position: absolute;
+                right: 16px;           /* Align to the far right */
             }
         </style>
     </head>
@@ -506,10 +518,7 @@
     <script type="module" src="script.js"></script>
     <footer class="bgg-footer">
         <img src="./BGG.png" alt="Powered by BoardGameGeek" />
-        <span class="app-version">v1.9.0</span>
+        <span class="app-version">v1.9.1</span>
     </footer>
-
 </body>
 </html>
-
-
