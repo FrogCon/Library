@@ -313,12 +313,23 @@ function getCollection() {
 
 function prepareData(data) {
     const statusDiv = document.getElementById('statusMessage');
+
+    const items = data.getElementsByTagName('item');
+
+    // ⛔ GUARD: No games yet (queued or empty collection)
+    if (!items || items.length === 0) {
+        console.warn("BGG returned no <item> elements yet");
+
+        statusDiv.innerHTML = "Library is still being prepared. Retrying in 10s...";
+        setTimeout(getCollection, 10000);
+        return;
+    }
+
     const userUID = auth.currentUser.uid;
     statusDiv.innerHTML = 'Sorting Library...';
   
     // 1) Build extractedData from BGG XML
     const extractedData = [];
-    const items = data.getElementsByTagName('item');
   
     for (let i = 0; i < items.length; i++) {
       const name = items[i].getElementsByTagName('name')[0].textContent;

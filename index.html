@@ -331,6 +331,26 @@
                     transform: rotate(360deg) scale(1);
                 }
             }
+
+            .bgg-footer {
+                margin-top: 40px;
+                padding: 12px 16px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                opacity: 0.8;
+            }
+
+            .bgg-footer img {
+                max-width: 180px;
+                height: auto;
+            }
+
+            .app-version {
+                font-size: 0.85em;
+                color: #666;
+                white-space: nowrap;
+            }
         </style>
     </head>
     <body>
@@ -443,9 +463,6 @@
                 <button id="searchLibraryButton" class="button">Display Library</button>
                 <div id="libraryResults"></div>
             </div>
-            <a href="#" id="adminlink" style="position: fixed;bottom: 10px;right: 10px;font-size: 14px;color: darkgray;">
-              admin
-            </a>
         </div>
 
         <div id="userListModal" class="modal">
@@ -487,6 +504,11 @@
         }
     </script>
     <script type="module" src="script.js"></script>
+    <footer class="bgg-footer">
+        <img src="./BGG.png" alt="Powered by BoardGameGeek" />
+        <span class="app-version">v1.9.0</span>
+    </footer>
+
 </body>
 </html>
 
