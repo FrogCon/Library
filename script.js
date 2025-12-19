@@ -316,7 +316,7 @@ function prepareData(data) {
 
     const items = data.getElementsByTagName('item');
 
-    // ⛔ GUARD: No games yet (queued or empty collection)
+    // GUARD: No games yet (queued or empty collection)
     if (!items || items.length === 0) {
         console.warn("BGG returned no <item> elements yet");
 
