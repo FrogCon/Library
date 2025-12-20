@@ -72,6 +72,7 @@ export const getBGGCollection = onRequest(
         let errorMessage = null;
 
         if (hasErrors) {
+          console.log("BGG response contains <errors>");
           const match = xml.match(/<message>(.*?)<\/message>/s);
           if (match && match[1]) {
             errorMessage = match[1].trim();
@@ -87,6 +88,7 @@ export const getBGGCollection = onRequest(
 
         if (errorMessage) {
           res.set("X-BGG-Error", errorMessage);
+          console.log("BGG error message:", errorMessage);
         }
 
         console.log("Sending response back to client");
