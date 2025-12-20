@@ -63,33 +63,14 @@ export const getBGGCollection = onRequest(
           xml.substring(0, 500).replace(/\n/g, " ")
         );
 
-        const hasErrors = xml.includes("<errors>");
         const hasItems = xml.includes("<items");
-        const hasMessage = xml.includes("<message>");
-
-        const isQueued = hasMessage && !hasItems && !hasErrors;
-
-        let errorMessage = null;
-
-        if (hasErrors) {
-          console.log("BGG response contains <errors>");
-          const match = xml.match(/<message>(.*?)<\/message>/s);
-          if (match && match[1]) {
-            errorMessage = match[1].trim();
-          }
-        }
+        const isQueued = !hasItems;
 
         console.log("BGG has <items>:", hasItems);
-        console.log("BGG has <message>:", hasMessage);
         console.log("BGG queued:", isQueued);
 
         res.set("Content-Type", "text/xml");
         res.set("X-BGG-Queued", isQueued ? "true" : "false");
-
-        if (errorMessage) {
-          res.set("X-BGG-Error", errorMessage);
-          console.log("BGG error message:", errorMessage);
-        }
 
         console.log("Sending response back to client");
         console.log("=== getBGGCollection END ===");

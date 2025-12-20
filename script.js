@@ -12,6 +12,8 @@ const loginButton = document.getElementById("loginButton");
 const submitLoginButton = document.getElementById("submitLoginButton");
 const userStatus = document.getElementById("userStatus");
 let activeTab = "Home";
+let collectionAttempts = 0;
+const MAX_COLLECTION_ATTEMPTS = 3;
 
 // Import Firebase modules
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
@@ -274,48 +276,34 @@ const BGG_DETAILS_URL =
 
 function getCollection() {
     if (!isLoggedIn()) return;
-    
-    var username = document.getElementById('bggUsername').value;
-    var statusDiv = document.getElementById('statusMessage');
-    
-    if (username) {
-        statusDiv.innerHTML = 'Fetching Library...';
-        fetch(`${BGG_COLLECTION_URL}?username=${encodeURIComponent(username)}`)
-            .then(async response => {
-                const xmlText = await response.text();
-
-                const errorMessage = response.headers.get("X-BGG-Error");
-                if (errorMessage) {
-                    statusDiv.innerHTML = errorMessage;
-                    return null;
-                }
-
-                const queued = response.headers.get("X-BGG-Queued") === "true";
-                if (queued) {
-                    statusDiv.innerHTML = "Library found! Request has been queued retrying in 10s...";
-                    setTimeout(getCollection, 10000);
-                    return null;
-                }
-
-                return xmlText;
-            })
-            .then(str => {
-                if (!str) return;
-                const data = new DOMParser().parseFromString(str, "text/xml");
-                prepareData(data);
-            })
-            .catch(error => {
-                console.error(error);
-                alert("An error occurred. Please try again.");
-                statusDiv.innerHTML = "";
-            });
-    } else {
-        if (!username) {
-            alert ('Please Enter A Username.');
-            statusDiv.innerHTML = '';
-        }
+  
+    const username = document.getElementById('bggUsername').value;
+    const statusDiv = document.getElementById('statusMessage');
+  
+    if (!username) {
+      alert('Please Enter A Username.');
+      statusDiv.innerHTML = '';
+      return;
     }
-}
+  
+    if (collectionAttempts === 0) {
+      statusDiv.innerHTML = 'Fetching Library...';
+    }
+  
+    collectionAttempts++;
+  
+    fetch(`${BGG_COLLECTION_URL}?username=${encodeURIComponent(username)}`)
+      .then(response => response.text())
+      .then(str => {
+        const data = new DOMParser().parseFromString(str, "text/xml");
+        prepareData(data);
+      })
+      .catch(error => {
+        console.error(error);
+        statusDiv.innerHTML =
+          "Sorry, something went wrong. Please check your username or try again later.";
+      });
+}  
 
 function prepareData(data) {
     const statusDiv = document.getElementById('statusMessage');
@@ -324,12 +312,20 @@ function prepareData(data) {
 
     // GUARD: No games yet (queued or empty collection)
     if (!items || items.length === 0) {
-        console.warn("BGG returned no <item> elements yet");
-
-        statusDiv.innerHTML = "Library is still being prepared. Retrying in 10s...";
-        setTimeout(getCollection, 10000);
+        if (collectionAttempts < MAX_COLLECTION_ATTEMPTS) {
+          statusDiv.innerHTML =
+            `Library not ready yet. Retrying (${collectionAttempts}/${MAX_COLLECTION_ATTEMPTS})...`;
+          setTimeout(getCollection, 10000);
+        } else {
+          statusDiv.innerHTML =
+            "Sorry, something went wrong. Please check your username or try again later.";
+          collectionAttempts = 0; // reset for next attempt
+        }
         return;
     }
+    
+    // SUCCESS — reset attempts
+    collectionAttempts = 0;
 
     const userUID = auth.currentUser.uid;
     statusDiv.innerHTML = 'Sorting Library...';
