@@ -283,12 +283,19 @@ function getCollection() {
         fetch(`${BGG_COLLECTION_URL}?username=${encodeURIComponent(username)}`)
             .then(async response => {
                 const xmlText = await response.text();
+
                 const queued = response.headers.get("X-BGG-Queued") === "true";
+                const errorMessage = response.headers.get("X-BGG-Error");
+
+                if (errorMessage) {
+                    statusDiv.innerHTML = errorMessage;
+                    return null;
+                }
 
                 if (queued) {
-                statusDiv.innerHTML = "Library found! Request has been queued retrying in 10s...";
-                setTimeout(getCollection, 10000);
-                return null;
+                    statusDiv.innerHTML = "Library found! Request has been queued retrying in 10s...";
+                    setTimeout(getCollection, 10000);
+                    return null;
                 }
 
                 return xmlText;
