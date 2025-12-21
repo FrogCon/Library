@@ -435,7 +435,7 @@ async function fetchUserGames() {
     gamesArray.push({
       name: data.name,
       docName: docSnap.id,
-      objectId: data.objectId,
+      objectId: Number(data.objectId),
       thumbnail: data.thumbnail,
       newGame: data.newGame, 
       status: data.status
