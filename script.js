@@ -26,7 +26,15 @@ const db = getFirestore(); // Uses the same app
 // Authentication Functions
 function signUp(email, password) {
     createUserWithEmailAndPassword(auth, email, password)
-        .then(userCredential => {
+        .then(async (userCredential) => {
+            const user = userCredential.user;
+
+            // Create Firestore user document
+            await setDoc(doc(db, "users", user.uid), {
+                isActive: true,
+                role: "user" // optional placeholder
+            });
+
             console.log("User signed up");
             login(email, password);
             signUpModal.style.display = "none";
@@ -452,6 +460,11 @@ async function fetchAllGames() {
   
     // For each user, load their personal top-level collection
     for (const userDoc of usersSnap.docs) {
+      const userData = userDoc.data();
+
+      // Skip inactive users
+      if (userData.isActive === false) continue;
+
       const userUID = userDoc.id;
       const libraryName = userDoc.data().libraryName || "(No Library Name)";
       const userGamesSnap = await getDocs(collection(db, userUID));
