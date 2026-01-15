@@ -780,7 +780,35 @@ async function displayGamesTab() {
                     resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
                     event.stopPropagation(); // Prevent triggering clicks on underlying elements
                 };
-    
+
+                const ownerIndicator = document.createElement("div");
+                ownerIndicator.style = `
+                    position: absolute;
+                    top: 0px;
+                    left: 0px;
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 16px;
+                    background-color: rgba(0,0,0,0.5);
+                    color: white;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    font-weight: bold;
+                    cursor: pointer;
+                    z-index: 10;
+                `;
+
+                ownerIndicator.textContent = game.sharedOwners.length;
+                resultDiv.appendChild(ownerIndicator);
+
+                ownerIndicator.addEventListener("click", (event) => {
+                    event.stopPropagation();
+
+                    showOwnerList(game.sharedOwners, game.name);
+                });
+
+
                 resultDiv.style.position = 'relative';
                 resultDiv.appendChild(websiteOverlay);
                 resultDiv.appendChild(addActionOverlay);
@@ -1622,4 +1650,23 @@ async function showUserList(statusArray) {
   }
 
   userListModal.style.display = "block";
+}
+
+document.getElementById("closeOwnerListModal").onclick = () => {
+  document.getElementById("ownerListModal").style.display = "none";
+};
+
+async function showOwnerList(sharedOwners, gameName) {
+  const modal = document.getElementById("ownerListModal");
+  const list = document.getElementById("ownerList");
+
+  list.innerHTML = "";
+
+  sharedOwners.forEach(owner => {
+    const li = document.createElement("li");
+    li.textContent = owner.libraryName;
+    list.appendChild(li);
+  });
+
+  modal.style.display = "block";
 }
