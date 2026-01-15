@@ -784,8 +784,8 @@ async function displayGamesTab() {
                 const ownerIndicator = document.createElement("div");
                 ownerIndicator.style = `
                     position: absolute;
-                    top: 0px;
-                    left: 0px;
+                    bottom: 0px;
+                    right: 0px;
                     width: 32px;
                     height: 32px;
                     border-radius: 16px;
@@ -895,10 +895,6 @@ async function displayGamesTab() {
                 `;
                 resultDiv.appendChild(newGameIndicator);
             }
-
-            
-            
-
 
             if (game.newGame === "Y") {
                 // Create a "New Game" indicator
@@ -1024,10 +1020,6 @@ async function displayGamesTab() {
 
             // Initial click on the game item shows the overlays
             resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
-
-
-
-
 
             resultDiv.appendChild(thumbnailImg);
             resultDiv.appendChild(nameDiv);
