@@ -1661,9 +1661,9 @@ function showGameInfoModal(game) {
         header.innerHTML = "<strong>Selected By</strong>";
         list.appendChild(header);
 
-        selectedUsers.forEach(uid => {
+        selectedUsers.forEach(user => {
             const li = document.createElement("li");
-            li.textContent = uid; // or map to display name later
+            li.textContent = user.name || user;
             list.appendChild(li);
         });
     }
