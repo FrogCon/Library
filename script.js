@@ -763,7 +763,6 @@ async function displayGamesTab() {
                 });
 
                 // Initial update of the user count
-                //updateUserCount(game.status || [], userCountIndicator);
                 updateInfoIndicator(game, userCountIndicator);
                 
                 // Click handler for the overlay
@@ -775,34 +774,6 @@ async function displayGamesTab() {
                     resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
                     event.stopPropagation(); // Prevent triggering clicks on underlying elements
                 };
-
-                const ownerIndicator = document.createElement("div");
-                ownerIndicator.style = `
-                    position: absolute;
-                    bottom: 0px;
-                    right: 0px;
-                    width: 32px;
-                    height: 32px;
-                    border-radius: 16px;
-                    background-color: rgba(0,0,0,0.5);
-                    color: white;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    font-weight: bold;
-                    cursor: pointer;
-                    z-index: 10;
-                `;
-
-                ownerIndicator.textContent = game.sharedOwners.length;
-                resultDiv.appendChild(ownerIndicator);
-
-                ownerIndicator.addEventListener("click", (event) => {
-                    event.stopPropagation();
-
-                    showOwnerList(game.sharedOwners, game.name);
-                });
-
 
                 resultDiv.style.position = 'relative';
                 resultDiv.appendChild(websiteOverlay);
@@ -991,7 +962,6 @@ async function displayGamesTab() {
             });
 
             // Initial update of the user count
-            //updateUserCount(game.status || [], userCountIndicator);
             updateInfoIndicator(game, userCountIndicator);
             
             // Click handler for the overlay
@@ -1229,7 +1199,6 @@ async function olddisplayGamesTab() {
             resultDiv.appendChild(userCountIndicator);
             
             // Initial update of the user count
-            //updateUserCount(game.status || [], userCountIndicator);
             updateInfoIndicator(game, userCountIndicator);
             
             // Click handler for the overlay
@@ -1278,12 +1247,6 @@ async function olddisplayGamesTab() {
         alert("Failed to load games. Please try again later.");
         hideLoadingOverlay();
     }
-}
-
-function updateUserCount(statusArray, userCountIndicator) {
-    const count = statusArray.length;
-    userCountIndicator.textContent = "i";
-    userCountIndicator.style.display = count > 0 ? 'flex' : 'none';
 }
 
 function updateInfoIndicator(game, indicator) {
@@ -1494,7 +1457,6 @@ function createGameClickHandler(game, resultDiv, userCountIndicator) {
 
         // Update the user count indicator **immediately**
         updateInfoIndicator(game, userCountIndicator);
-        //updateUserCount(statusArray, userCountIndicator);
 
         // 4) Update the background color
         if (statusArray.includes(userUID)) {
@@ -1618,36 +1580,6 @@ window.addEventListener("click", (event) => {
   }
 });
 
-// Fetch and display library names for a given array of user UIDs
-async function showUserList(statusArray) {
-  userListElement.innerHTML = "<li>Loading...</li>";
-
-  const libraryNames = [];
-
-  for (const uid of statusArray) {
-    try {
-      const userDoc = await getDoc(doc(db, "users", uid));
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        libraryNames.push(data.libraryName || "(Unnamed Library)");
-      } else {
-        libraryNames.push("(Unknown User)");
-      }
-    } catch (error) {
-      console.error("Error fetching user info:", error);
-      libraryNames.push("(Error Loading User)");
-    }
-  }
-
-  if (libraryNames.length === 0) {
-    userListElement.innerHTML = "<li>No one has selected this game yet.</li>";
-  } else {
-    userListElement.innerHTML = libraryNames.map(name => `<li>${name}</li>`).join("");
-  }
-
-  userListModal.style.display = "block";
-}
-
 async function showGameInfoModal(game) {
     const modal = document.getElementById("userListModal");
     const list = document.getElementById("userList");
@@ -1696,23 +1628,4 @@ async function showGameInfoModal(game) {
     }
 
     modal.style.display = "block";
-}
-
-document.getElementById("closeOwnerListModal").onclick = () => {
-  document.getElementById("ownerListModal").style.display = "none";
-};
-
-async function showOwnerList(sharedOwners, gameName) {
-  const modal = document.getElementById("ownerListModal");
-  const list = document.getElementById("ownerList");
-
-  list.innerHTML = "";
-
-  sharedOwners.forEach(owner => {
-    const li = document.createElement("li");
-    li.textContent = owner.libraryName;
-    list.appendChild(li);
-  });
-
-  modal.style.display = "block";
 }
