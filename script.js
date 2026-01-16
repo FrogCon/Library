@@ -1648,28 +1648,41 @@ async function showUserList(statusArray) {
   userListModal.style.display = "block";
 }
 
-function showGameInfoModal(game) {
+async function showGameInfoModal(game) {
     const modal = document.getElementById("userListModal");
     const list = document.getElementById("userList");
 
     list.innerHTML = "";
 
-    // Selected by
-    const selectedUsers = Array.isArray(game.status) ? game.status : [];
-    if (selectedUsers.length > 0) {
+    // Selected By
+    const selectedUIDs = Array.isArray(game.status) ? game.status : [];
+
+    if (selectedUIDs.length > 0) {
         const header = document.createElement("li");
         header.innerHTML = "<strong>Selected By</strong>";
         list.appendChild(header);
 
-        selectedUsers.forEach(user => {
+        for (const uid of selectedUIDs) {
+            let displayName = "Unknown User";
+
+            try {
+                const userDoc = await getDoc(doc(db, "users", uid));
+                if (userDoc.exists()) {
+                    displayName =
+                        userDoc.data().libraryName || "Unknown User";
+                }
+            } catch (err) {
+                console.warn("Failed to fetch user", uid, err);
+            }
+
             const li = document.createElement("li");
-            li.textContent = user.name || user;
+            li.textContent = displayName;
             list.appendChild(li);
-        });
+        }
     }
 
-    // Owned by
-    if (Array.isArray(game.sharedOwners) && game.sharedOwners.length > 0) {
+    // Owned By
+    if (Array.isArray(game.sharedOwners) && game.sharedOwners.length >= 2) {
         const header = document.createElement("li");
         header.innerHTML = "<strong>Owned By</strong>";
         header.style.marginTop = "10px";
@@ -1677,7 +1690,7 @@ function showGameInfoModal(game) {
 
         game.sharedOwners.forEach(owner => {
             const li = document.createElement("li");
-            li.textContent = owner.libraryName;
+            li.textContent = owner.libraryName || "Unknown Library";
             list.appendChild(li);
         });
     }
