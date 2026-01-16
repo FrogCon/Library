@@ -757,25 +757,20 @@ async function displayGamesTab() {
                 // Append the indicator to the resultDiv
                 resultDiv.appendChild(userCountIndicator);
 
-                userCountIndicator.addEventListener("click", async (event) => {
-                    event.stopPropagation(); // Stop the click from reaching the resultDiv overlay logic
-                    const selectedUsers = Array.isArray(game.status) ? game.status : [];
-                    if (selectedUsers.length > 0) {
-                        await showUserList(selectedUsers);
-                    } else {
-                        alert("No users have selected this game yet.");
-                    }
+                userCountIndicator.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    showGameInfoModal(game);
                 });
-                
+
                 // Initial update of the user count
-                updateUserCount(game.status || [], userCountIndicator);
+                //updateUserCount(game.status || [], userCountIndicator);
+                updateInfoIndicator(game, userCountIndicator);
                 
                 // Click handler for the overlay
                 addActionOverlay.onclick = function(event) {
                     createGameClickHandler(game, resultDiv, userCountIndicator)();
                     hideOverlays(websiteOverlay, addActionOverlay);
                     updateThumbColor();
-                    //updateUserCount(game.status || []);
                     // Re-enable showing overlays on click
                     resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
                     event.stopPropagation(); // Prevent triggering clicks on underlying elements
@@ -990,25 +985,20 @@ async function displayGamesTab() {
             // Append the indicator to the resultDiv
             resultDiv.appendChild(userCountIndicator);
 
-            userCountIndicator.addEventListener("click", async (event) => {
-                event.stopPropagation(); // Stop the click from reaching the resultDiv overlay logic
-                const selectedUsers = Array.isArray(game.status) ? game.status : [];
-                if (selectedUsers.length > 0) {
-                    await showUserList(selectedUsers);
-                } else {
-                    alert("No users have selected this game yet.");
-                }
+            userCountIndicator.addEventListener("click", (event) => {
+                event.stopPropagation();
+                showGameInfoModal(game);
             });
-            
+
             // Initial update of the user count
-            updateUserCount(game.status || [], userCountIndicator);
+            //updateUserCount(game.status || [], userCountIndicator);
+            updateInfoIndicator(game, userCountIndicator);
             
             // Click handler for the overlay
             addActionOverlay.onclick = function(event) {
                 createGameClickHandler(game, resultDiv, userCountIndicator)();
                 hideOverlays(websiteOverlay, addActionOverlay);
                 updateThumbColor();
-                //updateUserCount(game.status || []);
                 // Re-enable showing overlays on click
                 resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
                 event.stopPropagation(); // Prevent triggering clicks on underlying elements
@@ -1239,14 +1229,14 @@ async function olddisplayGamesTab() {
             resultDiv.appendChild(userCountIndicator);
             
             // Initial update of the user count
-            updateUserCount(game.status || [], userCountIndicator);
+            //updateUserCount(game.status || [], userCountIndicator);
+            updateInfoIndicator(game, userCountIndicator);
             
             // Click handler for the overlay
             addActionOverlay.onclick = function(event) {
                 createGameClickHandler(game, resultDiv, userCountIndicator)();
                 hideOverlays(websiteOverlay, addActionOverlay);
                 updateThumbColor();
-                //updateUserCount(game.status || []);
                 // Re-enable showing overlays on click
                 resultDiv.onclick = showOverlaysFunction(websiteOverlay, addActionOverlay);
                 event.stopPropagation(); // Prevent triggering clicks on underlying elements
@@ -1292,8 +1282,21 @@ async function olddisplayGamesTab() {
 
 function updateUserCount(statusArray, userCountIndicator) {
     const count = statusArray.length;
-    userCountIndicator.textContent = count;
+    userCountIndicator.textContent = "i";
     userCountIndicator.style.display = count > 0 ? 'flex' : 'none';
+}
+
+function updateInfoIndicator(game, indicator) {
+    const selectedCount = Array.isArray(game.status) ? game.status.length : 0;
+    const ownerCount = Array.isArray(game.sharedOwners)
+        ? game.sharedOwners.length
+        : 1; // individual games have 1 owner
+
+    const shouldShow =
+        selectedCount > 0 || ownerCount >= 2;
+
+    indicator.style.display = shouldShow ? "flex" : "none";
+    indicator.textContent = "i";
 }
 
 function showOverlaysFunction(websiteOverlay, addActionOverlay) {
@@ -1490,7 +1493,8 @@ function createGameClickHandler(game, resultDiv, userCountIndicator) {
         game.status = statusArray;
 
         // Update the user count indicator **immediately**
-        updateUserCount(statusArray, userCountIndicator);
+        updateInfoIndicator(game, userCountIndicator);
+        //updateUserCount(statusArray, userCountIndicator);
 
         // 4) Update the background color
         if (statusArray.includes(userUID)) {
@@ -1642,6 +1646,43 @@ async function showUserList(statusArray) {
   }
 
   userListModal.style.display = "block";
+}
+
+function showGameInfoModal(game) {
+    const modal = document.getElementById("userListModal");
+    const list = document.getElementById("userList");
+
+    list.innerHTML = "";
+
+    // Selected by
+    const selectedUsers = Array.isArray(game.status) ? game.status : [];
+    if (selectedUsers.length > 0) {
+        const header = document.createElement("li");
+        header.innerHTML = "<strong>Selected By</strong>";
+        list.appendChild(header);
+
+        selectedUsers.forEach(uid => {
+            const li = document.createElement("li");
+            li.textContent = uid; // or map to display name later
+            list.appendChild(li);
+        });
+    }
+
+    // Owned by
+    if (Array.isArray(game.sharedOwners) && game.sharedOwners.length > 0) {
+        const header = document.createElement("li");
+        header.innerHTML = "<strong>Owned By</strong>";
+        header.style.marginTop = "10px";
+        list.appendChild(header);
+
+        game.sharedOwners.forEach(owner => {
+            const li = document.createElement("li");
+            li.textContent = owner.libraryName;
+            list.appendChild(li);
+        });
+    }
+
+    modal.style.display = "block";
 }
 
 document.getElementById("closeOwnerListModal").onclick = () => {
