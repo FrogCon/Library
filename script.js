@@ -1590,8 +1590,11 @@ async function showGameInfoModal(game) {
     const selectedUIDs = Array.isArray(game.status) ? game.status : [];
 
     if (selectedUIDs.length > 0) {
-        const header = document.createElement("li");
-        header.innerHTML = "<strong>Selected By</strong>";
+        const header = document.createElement("div");
+        header.textContent = "Selected By";
+        header.style.fontWeight = "bold";
+        header.style.marginTop = "8px";
+        header.style.marginBottom = "4px";
         list.appendChild(header);
 
         for (const uid of selectedUIDs) {
@@ -1615,9 +1618,11 @@ async function showGameInfoModal(game) {
 
     // Owned By
     if (Array.isArray(game.sharedOwners) && game.sharedOwners.length >= 2) {
-        const header = document.createElement("li");
-        header.innerHTML = "<strong>Owned By</strong>";
-        header.style.marginTop = "10px";
+        const header = document.createElement("div");
+        header.textContent = "Owned By";
+        header.style.fontWeight = "bold";
+        header.style.marginTop = "12px";
+        header.style.marginBottom = "4px";
         list.appendChild(header);
 
         game.sharedOwners.forEach(owner => {
